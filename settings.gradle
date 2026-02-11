@@ -11,9 +11,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+
+        maven {
+            url "https://developer.dji.com/maven"
+        }
     }
 }
 
 rootProject.name = "SOLARIS Matrice"
 include(":app")
-include ':android-sdk-v5-uxsdk'
+include(":android-sdk-v5-uxsdk")

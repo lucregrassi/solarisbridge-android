@@ -32,18 +32,21 @@ class MyApplication : Application() {
             override fun onRegisterFailure(error: IDJIError?) {
                 Log.i(TAG, "onRegisterFailure: ")
             }
-            override fun onProductConnect(productId: Int) {
-                Log.i(TAG, "onProductConnect: ")
-            }
-            override fun onProductDisconnect(productId: Int) {
-                Log.i(TAG, "onProductDisconnect: ")
-            }
-            override fun onProductChanged(productId: Int)
-            {
-                Log.i(TAG, "onProductChanged: ")
-            }
             override fun onDatabaseDownloadProgress(current: Long, total: Long) {
                 Log.i(TAG, "onDatabaseDownloadProgress: ${current/total}")
+            }
+            override fun onProductConnect(productId: Int) {
+                Log.i(TAG, "onProductConnect: $productId")
+                DroneState.setConnected(true)
+            }
+            override fun onProductDisconnect(productId: Int) {
+                Log.i(TAG, "onProductDisconnect: $productId")
+                DroneState.setConnected(false)
+            }
+            override fun onProductChanged(productId: Int) {
+                Log.i(TAG, "onProductChanged: $productId")
+                // nel dubbio, consideriamolo connesso
+                DroneState.setConnected(true)
             }
         })
     }
