@@ -2,11 +2,15 @@ package com.rice.solarismatrice
 
 import android.util.Log
 import dji.sdk.keyvalue.key.BatteryKey
+import dji.sdk.keyvalue.key.DJIKey
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.FlightControllerKey.KeyAircraftLocation3D
+import dji.sdk.keyvalue.key.FlightControllerKey.KeyUltrasonicHeight
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
+import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.common.Velocity3D
 import dji.sdk.keyvalue.value.flightcontroller.IMUState
 import dji.v5.common.callback.CommonCallbacks
@@ -20,159 +24,128 @@ object TelemetryProvider {
 
     data class Snapshot(
         val ts: Long = System.currentTimeMillis(),
-
         val lat: Double? = null,
         val lon: Double? = null,
         val alt: Double? = null,
-
         val velX: Double? = null,
         val velY: Double? = null,
         val velZ: Double? = null,
-
         val roll: Double? = null,
         val pitch: Double? = null,
         val yaw: Double? = null,
-
         val batteryPercent: Int? = null,
-
         val homeLat: Double? = null,
         val homeLon: Double? = null,
-
-        // “compass”: in pratica heading (deg)
         val compassHeading: Double? = null,
-
-        // IMU states (health/calibration etc.)
         val imuStates: List<IMUState>? = null
     )
 
     private val snapshot = AtomicReference(Snapshot())
-    private val started = AtomicBoolean(false)
+    private val listening = AtomicBoolean(false)
+    private val listenHolder = Any()
+
+    fun getSnapshot(): Snapshot = snapshot.get()
 
     private fun update(block: (Snapshot) -> Snapshot) {
         snapshot.updateAndGet { old -> block(old.copy(ts = System.currentTimeMillis())) }
     }
 
-    fun getSnapshot(): Snapshot = snapshot.get()
+    // tipizzato: GET iniziale + LISTEN
+    private fun <T : Any> listenAndFetch(km: KeyManager, key: DJIKey<T>, onValue: (T) -> Unit) {
+        try {
+            km.getValue(key, object : CommonCallbacks.CompletionCallbackWithParam<T> {
+                override fun onSuccess(t: T) {
+                    onValue(t)
+                }
 
-    private val listenHolder = Any()
+                override fun onFailure(error: dji.v5.common.error.IDJIError) {
+                    Log.w(TAG, "getValue failed for key=$key: ${error.description()}")
+                }
+            })
+        } catch (t: Throwable) {
+            Log.w(TAG, "getValue exception for $key", t)
+        }
 
-    fun start() {
-        if (!started.compareAndSet(false, true)) {
-            Log.w(TAG, "start() called but already started")
+        // listen updates
+        try {
+            km.listen(key, listenHolder) { _, v ->
+                if (v != null) onValue(v)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "listen exception for $key", t)
+        }
+    }
+
+    /** Start telemetry collection (idempotent). */
+    fun startIfNeeded() {
+        if (!listening.compareAndSet(false, true)) {
+            Log.i(TAG, "TelemetryProvider.startIfNeeded(): already listening")
             return
         }
 
         val km = KeyManager.getInstance()
         if (km == null) {
-            Log.w(TAG, "KeyManager is null (SDK not ready?)")
-            started.set(false)
+            Log.w(TAG, "KeyManager null, cannot start TelemetryProvider")
+            listening.set(false)
             return
         }
 
-        // 1) Aircraft location (lat/lon)
-        km.listen(
-            KeyTools.createKey(FlightControllerKey.KeyAircraftLocation),
-            listenHolder,
-            CommonCallbacks.KeyListener<LocationCoordinate2D> { _, newValue ->
-                newValue ?: return@KeyListener
-                update { s ->
-                    s.copy(
-                        lat = newValue.latitude,
-                        lon = newValue.longitude
-                    )
-                }
-            }
-        )
+        // Define keys with correct generic types
+        val kLoc3d: DJIKey<LocationCoordinate3D> = KeyTools.createKey(KeyAircraftLocation3D)
+        val kUltra: DJIKey<Int> = KeyTools.createKey(KeyUltrasonicHeight)
+        val kVel: DJIKey<Velocity3D> = KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity)
+        val kAtt: DJIKey<Attitude> = KeyTools.createKey(FlightControllerKey.KeyAircraftAttitude)
+        val kBatt: DJIKey<Int> = KeyTools.createKey(BatteryKey.KeyChargeRemainingInPercent, ComponentIndexType.LEFT_OR_MAIN)
+        val kHome: DJIKey<LocationCoordinate2D> = KeyTools.createKey(FlightControllerKey.KeyHomeLocation)
+        val kImu: DJIKey<List<IMUState>> = KeyTools.createKey(FlightControllerKey.KeyIMUStatus)
 
-        // 2) Altitude (Double nel tuo SDK)
-        km.listen(
-            KeyTools.createKey(FlightControllerKey.KeyAltitude),
-            listenHolder,
-            CommonCallbacks.KeyListener<Double> { _, newValue ->
-                newValue ?: return@KeyListener
-                update { s -> s.copy(alt = newValue) }
-            }
-        )
-
-        // 3) Velocity (x/y/z) — convertiamo a Double esplicitamente (robusto)
-        km.listen(
-            KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity),
-            listenHolder,
-            CommonCallbacks.KeyListener<Velocity3D> { _, newValue ->
-                newValue ?: return@KeyListener
-                update { s ->
-                    s.copy(
-                        velX = newValue.x.toDouble(),
-                        velY = newValue.y.toDouble(),
-                        velZ = newValue.z.toDouble()
-                    )
-                }
-            }
-        )
-
-        // 4) Attitude (roll/pitch/yaw) — convertiamo a Double
-        km.listen(
-            KeyTools.createKey(FlightControllerKey.KeyAircraftAttitude),
-            listenHolder,
-            CommonCallbacks.KeyListener<Attitude> { _, newValue ->
-                newValue ?: return@KeyListener
-                val yaw = newValue.yaw.toDouble()
-                update { s ->
-                    s.copy(
-                        roll = newValue.roll.toDouble(),
-                        pitch = newValue.pitch.toDouble(),
-                        yaw = yaw,
-                        compassHeading = yaw
-                    )
-                }
-            }
-        )
-
-        // 5) Battery remaining (%) — qui l’index potrebbe non essere LEFT_OR_MAIN su battery,
-        // ma se nel tuo progetto compila e funziona lasciamo così.
-        km.listen(
-            KeyTools.createKey(BatteryKey.KeyChargeRemainingInPercent, ComponentIndexType.LEFT_OR_MAIN),
-            listenHolder,
-            CommonCallbacks.KeyListener<Int> { _, newValue ->
-                // battery può essere null durante init/disconnect
-                update { s -> s.copy(batteryPercent = newValue) }
-            }
-        )
-
-        // 6) Home position
-        km.listen(
-            KeyTools.createKey(FlightControllerKey.KeyHomeLocation),
-            listenHolder,
-            CommonCallbacks.KeyListener<LocationCoordinate2D> { _, newValue ->
-                newValue ?: return@KeyListener
-                update { s ->
-                    s.copy(
-                        homeLat = newValue.latitude,
-                        homeLon = newValue.longitude
-                    )
-                }
-            }
-        )
-
-        // 7) IMU status (list)
-        km.listen(
-            KeyTools.createKey(FlightControllerKey.KeyIMUStatus),
-            listenHolder
-        ) { _, newValue ->
-            // newValue può essere null durante init
-            update { s -> s.copy(imuStates = newValue) }
+        // Register GET+LISTEN for each
+        listenAndFetch(km, kLoc3d) { v ->
+            update { s -> s.copy(lat = v.latitude, lon = v.longitude) }
+            Log.d(TAG, "LOC3D got lat=${v.latitude} lon=${v.longitude}")
         }
 
-        Log.i(TAG, "TelemetryProvider started (listeners registered)")
+        listenAndFetch(km, kUltra) { v ->
+            val meters = try { v.toDouble() / 10.0 } catch (_: Throwable) { v.toDouble() }
+            update { s -> s.copy(alt = meters) }
+            Log.d(TAG, "ULTRA raw=$v -> ${meters}m")
+        }
+
+        listenAndFetch(km, kVel) { v ->
+            update { s -> s.copy(velX = v.x.toDouble(), velY = v.y.toDouble(), velZ = v.z.toDouble()) }
+        }
+
+        listenAndFetch(km, kAtt) { v ->
+            val yaw = v.yaw.toDouble()
+            update { s -> s.copy(roll = v.roll.toDouble(), pitch = v.pitch.toDouble(), yaw = yaw, compassHeading = yaw) }
+        }
+
+        listenAndFetch(km, kBatt) { v ->
+            update { s -> s.copy(batteryPercent = v) }
+        }
+
+        listenAndFetch(km, kHome) { v ->
+            update { s -> s.copy(homeLat = v.latitude, homeLon = v.longitude) }
+        }
+
+        listenAndFetch(km, kImu) { v ->
+            update { s -> s.copy(imuStates = v) }
+        }
+
+        Log.i(TAG, "TelemetryProvider started (GET + LISTEN)")
     }
 
-    fun stop() {
+    /** Stop telemetry collection (idempotent). */
+    fun stopIfNeeded() {
+        if (!listening.compareAndSet(true, false)) {
+            Log.i(TAG, "TelemetryProvider.stopIfNeeded(): not listening")
+            return
+        }
         try {
             KeyManager.getInstance()?.cancelListen(listenHolder)
         } catch (t: Throwable) {
-            Log.w(TAG, "stop() error", t)
-        } finally {
-            started.set(false)
+            Log.w(TAG, "cancelListen error", t)
         }
+        Log.i(TAG, "TelemetryProvider stopped")
     }
 }

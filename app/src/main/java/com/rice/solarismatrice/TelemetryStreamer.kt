@@ -10,16 +10,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TelemetryStreamer(private val ip: String, private val port: Int) {
     private val TAG = "TelemetryStreamer"
     private var socket: DatagramSocket? = null
-    private var addr: InetAddress = InetAddress.getByName(ip)
+    private val addr: InetAddress = InetAddress.getByName(ip)
     private val running = AtomicBoolean(false)
 
     fun start() {
-        if (running.get()) return
+        if (!running.compareAndSet(false, true)) return
         try {
             socket = DatagramSocket()
-            running.set(true)
             Log.i(TAG, "Telemetry streamer started -> $ip:$port")
         } catch (t: Throwable) {
+            running.set(false)
             Log.e(TAG, "TelemetryStreamer start failed", t)
         }
     }
@@ -31,34 +31,37 @@ class TelemetryStreamer(private val ip: String, private val port: Int) {
         Log.i(TAG, "Telemetry streamer stopped")
     }
 
-    /**
-     * Costruisce JSON dallo snapshot attuale e lo manda via UDP.
-     * Chiamare a 10Hz (o periodicamente).
-     */
-    fun sendCurrentSnapshot(snapshot: TelemetryProvider.Snapshot) {
-        if (!running.get() || socket == null) return
+    private fun JSONObject.putNullable(key: String, value: Any?) {
+        put(key, value ?: JSONObject.NULL)
+    }
+
+    fun sendCurrentSnapshot(s: TelemetryProvider.Snapshot) {
+        val sock = socket ?: return
+        if (!running.get()) return
 
         try {
             val json = JSONObject()
-            json.put("ts", snapshot.ts)
-            json.put("lat", snapshot.lat)
-            json.put("lon", snapshot.lon)
-            json.put("alt", snapshot.alt)
-            json.put("vel_x", snapshot.velX)
-            json.put("vel_y", snapshot.velY)
-            json.put("vel_z", snapshot.velZ)
-            json.put("roll", snapshot.roll)
-            json.put("pitch", snapshot.pitch)
-            json.put("yaw", snapshot.yaw)
-            json.put("battery", snapshot.batteryPercent)
-            json.put("home_lat", snapshot.homeLat)
-            json.put("home_lon", snapshot.homeLon)
-            json.put("home_alt", snapshot.alt)
-            json.put("compass", snapshot.compassHeading)
+            json.put("ts", s.ts)
+            json.putNullable("lat", s.lat)
+            json.putNullable("lon", s.lon)
+            json.putNullable("alt", s.alt)
+            json.putNullable("vel_x", s.velX)
+            json.putNullable("vel_y", s.velY)
+            json.putNullable("vel_z", s.velZ)
+            json.putNullable("roll", s.roll)
+            json.putNullable("pitch", s.pitch)
+            json.putNullable("yaw", s.yaw)
+            json.putNullable("battery_percent", s.batteryPercent)
+            json.putNullable("home_lat", s.homeLat)
+            json.putNullable("home_lon", s.homeLon)
+            json.putNullable("compass_heading", s.compassHeading)
+            json.put("imu_count", s.imuStates?.size ?: 0)
 
             val payload = json.toString().toByteArray(Charsets.UTF_8)
             val pkt = DatagramPacket(payload, payload.size, addr, port)
-            socket?.send(pkt)
+            sock.send(pkt)
+
+            Log.d(TAG, "TX telemetry: $json")
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to send telemetry packet", t)
         }
