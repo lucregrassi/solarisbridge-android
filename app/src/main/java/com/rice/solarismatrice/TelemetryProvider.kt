@@ -157,12 +157,11 @@ object TelemetryProvider {
         // 7) IMU status (list)
         km.listen(
             KeyTools.createKey(FlightControllerKey.KeyIMUStatus),
-            listenHolder,
-            CommonCallbacks.KeyListener<List<IMUState>> { _, newValue ->
-                // newValue può essere null durante init
-                update { s -> s.copy(imuStates = newValue) }
-            }
-        )
+            listenHolder
+        ) { _, newValue ->
+            // newValue può essere null durante init
+            update { s -> s.copy(imuStates = newValue) }
+        }
 
         Log.i(TAG, "TelemetryProvider started (listeners registered)")
     }
