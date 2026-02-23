@@ -1,33 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="?attr/backgroundColor">
 
-    <TextureView
-        android:id="@+id/videoTexture"
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/topAppBar"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:title="Home"
+        app:titleTextColor="?attr/colorOnSurface"
+        app:popupTheme="@style/ToolbarPopupTheme"/>
 
+    <!-- Body: preview left, controls right -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btnVideo"
+        <!-- Camera preview -->
+        <TextureView
+            android:id="@+id/videoTexture"
             android:layout_width="0dp"
-            android:layout_weight="1"
-            android:text="START VIDEO"
-            android:layout_height="wrap_content" />
+            android:layout_height="match_parent"
+            android:layout_weight="3" />
 
-        <Button
-            android:id="@+id/btnTelem"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:text="START TELEMETRIA"
-            android:layout_height="wrap_content" />
+        <!-- Right side panel -->
+        <LinearLayout
+            android:layout_width="320dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:background="?attr/colorSurface">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:cardUseCompatPadding="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Streams"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"
+                        android:paddingBottom="8dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnVideo"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="START VIDEO"
+                        android:textStyle="bold"
+                        app:cornerRadius="12dp" />
+
+                    <TextView
+                        android:id="@+id/tvVideoStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="VIDEO: OFF"
+                        android:textStyle="bold"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="12dp"
+                        android:textColor="?attr/colorOnSurface" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTelem"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="START TELEMETRY"
+                        android:textStyle="bold"
+                        app:cornerRadius="12dp" />
+
+                    <TextView
+                        android:id="@+id/tvTelemStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="TELEMETRY: OFF"
+                        android:textStyle="bold"
+                        android:paddingTop="6dp"
+                        android:textColor="?attr/colorOnSurface" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCmd"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="START CMD"
+                        app:cornerRadius="12dp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:id="@+id/tvCmdStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="CMD: OFF"
+                        android:textSize="16sp"
+                        android:paddingTop="8dp"/>
+
+                    <TextView
+                        android:id="@+id/tvCmdLast"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Last cmd: -"
+                        android:textSize="14sp"
+                        android:paddingTop="4dp"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
     </LinearLayout>
+
 </LinearLayout>

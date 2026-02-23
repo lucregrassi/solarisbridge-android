@@ -55,7 +55,6 @@ class TelemetryStreamer(private val ip: String, private val port: Int) {
             json.putNullable("home_lat", s.homeLat)
             json.putNullable("home_lon", s.homeLon)
             json.putNullable("compass_heading", s.compassHeading)
-            json.put("imu_count", s.imuStates?.size ?: 0)
 
             val payload = json.toString().toByteArray(Charsets.UTF_8)
             val pkt = DatagramPacket(payload, payload.size, addr, port)

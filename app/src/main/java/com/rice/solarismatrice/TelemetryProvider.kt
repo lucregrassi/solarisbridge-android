@@ -12,7 +12,6 @@ import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.common.Velocity3D
-import dji.sdk.keyvalue.value.flightcontroller.IMUState
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.manager.KeyManager
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,7 +36,6 @@ object TelemetryProvider {
         val homeLat: Double? = null,
         val homeLon: Double? = null,
         val compassHeading: Double? = null,
-        val imuStates: List<IMUState>? = null
     )
 
     private val snapshot = AtomicReference(Snapshot())
@@ -97,7 +95,6 @@ object TelemetryProvider {
         val kAtt: DJIKey<Attitude> = KeyTools.createKey(FlightControllerKey.KeyAircraftAttitude)
         val kBatt: DJIKey<Int> = KeyTools.createKey(BatteryKey.KeyChargeRemainingInPercent, ComponentIndexType.LEFT_OR_MAIN)
         val kHome: DJIKey<LocationCoordinate2D> = KeyTools.createKey(FlightControllerKey.KeyHomeLocation)
-        val kImu: DJIKey<List<IMUState>> = KeyTools.createKey(FlightControllerKey.KeyIMUStatus)
 
         // Register GET+LISTEN for each
         listenAndFetch(km, kLoc3d) { v ->
@@ -126,10 +123,6 @@ object TelemetryProvider {
 
         listenAndFetch(km, kHome) { v ->
             update { s -> s.copy(homeLat = v.latitude, homeLon = v.longitude) }
-        }
-
-        listenAndFetch(km, kImu) { v ->
-            update { s -> s.copy(imuStates = v) }
         }
 
         Log.i(TAG, "TelemetryProvider started (GET + LISTEN)")

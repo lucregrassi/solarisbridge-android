@@ -6,12 +6,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.InetSocketAddress
-import java.net.Socket
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -19,18 +13,23 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var etPcIp: EditText
     private lateinit var etVideoPort: EditText
     private lateinit var etTelemPort: EditText
-    private lateinit var btnTest: Button
+    private lateinit var etControllerPort: EditText // <-- nuovo campo
+    private lateinit var btnSave: Button
     private lateinit var tvStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         tvControllerIp = findViewById(R.id.tvControllerIp)
         etPcIp = findViewById(R.id.etPcIp)
         etVideoPort = findViewById(R.id.etVideoPort)
         etTelemPort = findViewById(R.id.etTelemPort)
-        btnTest = findViewById(R.id.btnTest)
+        etControllerPort = findViewById(R.id.etControllerPort)
+        btnSave = findViewById(R.id.btnSave)
         tvStatus = findViewById(R.id.tvStatus)
 
         // IP del controller (best-effort)
@@ -40,76 +39,50 @@ class SettingsActivity : AppCompatActivity() {
         AppPrefs.getPcIp(this)?.let { etPcIp.setText(it) }
         etVideoPort.setText(AppPrefs.getVideoPort(this).toString())
         etTelemPort.setText(AppPrefs.getTelemPort(this).toString())
+        etControllerPort.setText(AppPrefs.getControllerPort(this).toString()) // <- precarica
 
-        btnTest.setOnClickListener {
-            testAndSave()
+        btnSave.setOnClickListener {
+            validateSaveAndGo()
         }
     }
 
-    private fun testAndSave() {
+    private fun validateSaveAndGo() {
         val ip = etPcIp.text.toString().trim()
         val videoPort = etVideoPort.text.toString().toIntOrNull() ?: -1
         val telemPort = etTelemPort.text.toString().toIntOrNull() ?: -1
+        val controllerPort = etControllerPort.text.toString().toIntOrNull() ?: -1
 
         // Validazioni immediate
         if (!NetUtils.isValidIpv4(ip)) {
             tvStatus.text = "IP del PC non valido"
             return
         }
-
         if (videoPort !in 1..65535) {
             tvStatus.text = "Porta VIDEO non valida"
             return
         }
-
         if (telemPort !in 1..65535) {
             tvStatus.text = "Porta TELEMETRIA non valida"
             return
         }
-
-        btnTest.isEnabled = false
-        tvStatus.text = "Test connessione TCP in corso..."
-
-        lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                testTcpConnection(ip, videoPort)
-            }
-
-            if (ok) {
-                tvStatus.text = "Connessione OK. Configurazione salvata."
-                AppPrefs.save(this@SettingsActivity, ip, videoPort, telemPort)
-
-                // Vai alla MainActivity
-                val intent = Intent(this@SettingsActivity, MainActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-                finish()
-            } else {
-                tvStatus.text =
-                    "Connessione fallita.\n" +
-                            "Controlla che il PC sia acceso,\n" +
-                            "che il server TCP sia in ascolto\n" +
-                            "e che firewall/rete permettano la connessione."
-                btnTest.isEnabled = true
-            }
+        if (controllerPort !in 1..65535) {
+            tvStatus.text = "Porta CONTROLLER non valida"
+            return
         }
-    }
 
-    private fun testTcpConnection(ip: String, port: Int): Boolean {
-        return try {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(ip, port), 1500)
-                true
-            }
-        } catch (_: Exception) {
-            false
-        }
+        // Salva subito (nessun test di rete)
+        AppPrefs.save(this@SettingsActivity, ip, videoPort, telemPort, controllerPort)
+        tvStatus.text = "Configurazione salvata."
+
+        // Vai alla MainActivity
+        val intent = Intent(this@SettingsActivity, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
     }
 
     /**
      * Impedisce di uscire se la configurazione non è valida.
-     * Questo garantisce che l'app non possa arrivare alla MainActivity
-     * senza IP/porte correttamente impostati.
      */
     @Suppress("DEPRECATION")
     @Deprecated("Deprecated in Java")
@@ -120,5 +93,31 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
         super.onBackPressed()
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        onBackPressedDispatcher.onBackPressed()
+        return true
+    }
+
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        menuInflater.inflate(R.menu.app_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.menu_main -> {
+                val intent = Intent(this, MainActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                startActivity(intent)
+                true
+            }
+            R.id.menu_settings -> {
+                // Sei già in Settings -> niente
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 }
