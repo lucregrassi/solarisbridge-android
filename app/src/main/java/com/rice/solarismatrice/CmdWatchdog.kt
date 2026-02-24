@@ -7,7 +7,7 @@ import android.util.Log
 class CmdWatchdog(
     private val tag: String = "CmdWatchdog",
     private val tickMs: Long = 50L,          // 20 Hz check
-    private val timeoutMs: Long = 120L,      // soglia failsafe
+    private val timeoutMs: Long = 200L,      // soglia failsafe
     private val onDroneFailSafe: () -> Unit
 ) {
     private val handler = Handler(Looper.getMainLooper())
