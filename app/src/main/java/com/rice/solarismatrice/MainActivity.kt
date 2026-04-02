@@ -15,7 +15,6 @@ import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
 import java.util.Timer
 import kotlin.concurrent.fixedRateTimer
-
 import dji.v5.manager.KeyManager
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
@@ -25,6 +24,17 @@ import dji.sdk.keyvalue.value.gimbal.GimbalSpeedRotation
 import dji.sdk.keyvalue.value.common.EmptyMsg
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
+
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
+import dji.sdk.keyvalue.value.flightcontroller.RollPitchControlMode
+import dji.sdk.keyvalue.value.flightcontroller.VerticalControlMode
+import dji.sdk.keyvalue.value.flightcontroller.VirtualStickFlightControlParam
+import dji.sdk.keyvalue.value.flightcontroller.YawControlMode
+
+import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
@@ -65,7 +75,34 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private var cmdRunning = false
 
     @Volatile private var lastDroneCmd: DroneCmd? = null
-    @Volatile private var lastGimbalCmd: GimbalCmd? = null
+    @Volatile private var vsEnabled = false
+
+    private val vsManager by lazy { VirtualStickManager.getInstance() }
+
+    private val droneTxHandler = Handler(Looper.getMainLooper())
+    private var droneTxRunning = false
+    private val droneTxPeriodMs = 50L   // 20 Hz
+
+    private val droneCmdWatchdog = CmdWatchdog(
+        tag = "DroneCmdWatchdog",
+        tickMs = 50L,
+        timeoutMs = 250L
+    ) {
+        Log.w(TAG, "Drone watchdog timeout -> mando ZERO")
+        lastDroneCmd = zeroDroneCmd()
+        sendVirtualStickNow(lastDroneCmd!!)
+    }
+
+    private val droneTxRunnable = object : Runnable {
+        override fun run() {
+            if (!droneTxRunning) return
+
+            val cmd = lastDroneCmd ?: zeroDroneCmd()
+            sendVirtualStickNow(cmd)
+
+            droneTxHandler.postDelayed(this, droneTxPeriodMs)
+        }
+    }
 
     private val DRONE_PORT = 7000
     private val GIMBAL_PORT = 7001
@@ -159,9 +196,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             val cmd = CmdParsers.parseDrone(json)
             if (cmd != null) {
                 lastDroneCmd = cmd
+                droneCmdWatchdog.lastDroneRxMs = SystemClock.elapsedRealtime()
+
                 Log.i(TAG, "DRONE RX $from -> $cmd")
                 showCmdLine("DRONE: $cmd")
-                // TODO: applyDroneCmd(cmd) quando colleghi Virtual Stick
             } else {
                 Log.w(TAG, "DRONE parse FAIL $from -> $json")
                 showCmdLine("DRONE parse FAIL: $json")
@@ -174,11 +212,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         ) { json, from ->
             val cmd = CmdParsers.parseGimbal(json)
             if (cmd != null) {
-                lastGimbalCmd = cmd
                 Log.i(TAG, "GIMBAL RX $from -> $cmd")
                 showCmdLine("GIMBAL: $cmd")
 
-                // ✅ invio reale alla gimbal SOLO quando CMD è attivo
+                // invio reale alla gimbal SOLO quando CMD è attivo
                 if (cmdRunning) applyGimbalCmd(cmd)
             } else {
                 Log.w(TAG, "GIMBAL parse FAIL $from -> $json")
@@ -194,24 +231,12 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
     private fun startCmdSystem() {
         if (cmdRunning) return
-        droneRx?.start()
-        gimbalRx?.start()
-        cmdRunning = true
-        Log.i(TAG, "CMD system STARTED (UDP $DRONE_PORT/$GIMBAL_PORT)")
-        showCmdLine("CMD system STARTED")
+        enableVirtualStickAndStart()
     }
 
     private fun stopCmdSystem(moveGimbalToNeutral: Boolean) {
         if (!cmdRunning) return
-        droneRx?.stop()
-        gimbalRx?.stop()
-        cmdRunning = false
-        Log.i(TAG, "CMD system STOPPED")
-        showCmdLine("CMD system STOPPED")
-
-        if (moveGimbalToNeutral) {
-            gimbalToNeutral()
-        }
+        disableVirtualStickAndStop(moveGimbalToNeutral)
     }
 
     private fun showCmdLine(line: String) {
@@ -504,6 +529,123 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             }
             R.id.menu_main -> true
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    // ======== Virtual stick
+    private fun clamp(v: Float, min: Float, max: Float): Double {
+        return v.coerceIn(min, max).toDouble()
+    }
+
+    private fun zeroDroneCmd() = DroneCmd(
+        vx = 0f,
+        vy = 0f,
+        yaw = 0f,
+        throttle = 0f
+    )
+
+    private fun buildVirtualStickParam(cmd: DroneCmd): VirtualStickFlightControlParam {
+        return VirtualStickFlightControlParam().apply {
+            rollPitchControlMode = RollPitchControlMode.VELOCITY
+            yawControlMode = YawControlMode.ANGULAR_VELOCITY
+            verticalControlMode = VerticalControlMode.VELOCITY
+            rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
+
+            pitch = clamp(cmd.vx, -23f, 23f)
+            roll = clamp(cmd.vy, -23f, 23f)
+            yaw = clamp(cmd.yaw, -100f, 100f)
+            verticalThrottle = clamp(cmd.throttle, -6f, 6f)
+        }
+    }
+
+    private fun sendVirtualStickNow(cmd: DroneCmd) {
+        if (!vsEnabled) return
+        try {
+            val param = buildVirtualStickParam(cmd)
+            vsManager.sendVirtualStickAdvancedParam(param)
+        } catch (t: Throwable) {
+            Log.e(TAG, "sendVirtualStickAdvancedParam failed", t)
+        }
+    }
+
+    private fun startDroneSenderLoop() {
+        if (droneTxRunning) return
+        droneTxRunning = true
+        droneTxHandler.post(droneTxRunnable)
+    }
+
+    private fun stopDroneSenderLoop() {
+        droneTxRunning = false
+        droneTxHandler.removeCallbacks(droneTxRunnable)
+    }
+
+    private fun enableVirtualStickAndStart() {
+        vsManager.enableVirtualStick(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                Log.i(TAG, "Virtual Stick ENABLED")
+                vsEnabled = true
+
+                vsManager.setVirtualStickAdvancedModeEnabled(true)
+
+                lastDroneCmd = zeroDroneCmd()
+                sendVirtualStickNow(lastDroneCmd!!)
+
+                droneCmdWatchdog.lastDroneRxMs = SystemClock.elapsedRealtime()
+                droneCmdWatchdog.start()
+                startDroneSenderLoop()
+
+                cmdRunning = true
+                droneRx?.start()
+                gimbalRx?.start()
+
+                runOnUiThread {
+                    Log.i(TAG, "CMD system STARTED (Virtual Stick + UDP)")
+                    showCmdLine("CMD system STARTED")
+                    renderCmdUiState()
+                }
+            }
+
+            override fun onFailure(error: IDJIError) {
+                vsEnabled = false
+                cmdRunning = false
+                Log.e(TAG, "enableVirtualStick failed: ${error.description()}")
+
+                runOnUiThread {
+                    showCmdLine("VS enable FAIL: ${error.description()}")
+                    renderCmdUiState()
+                }
+            }
+        })
+    }
+
+    private fun disableVirtualStickAndStop(moveGimbalToNeutral: Boolean) {
+        cmdRunning = false
+        stopDroneSenderLoop()
+        droneCmdWatchdog.stop()
+
+        droneRx?.stop()
+        gimbalRx?.stop()
+
+        lastDroneCmd = zeroDroneCmd()
+        sendVirtualStickNow(lastDroneCmd!!)
+
+        vsEnabled = false
+
+        vsManager.disableVirtualStick(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                Log.i(TAG, "Virtual Stick DISABLED")
+            }
+
+            override fun onFailure(error: IDJIError) {
+                Log.w(TAG, "disableVirtualStick failed: ${error.description()}")
+            }
+        })
+        Log.i(TAG, "CMD system STOPPED")
+        showCmdLine("CMD system STOPPED")
+        renderCmdUiState()
+
+        if (moveGimbalToNeutral) {
+            gimbalToNeutral()
         }
     }
 }
