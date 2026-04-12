@@ -551,8 +551,15 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             verticalControlMode = VerticalControlMode.VELOCITY
             rollPitchCoordinateSystem = FlightCoordinateSystem.BODY
 
-            pitch = clamp(cmd.vx, -23f, 23f)
-            roll = clamp(cmd.vy, -23f, 23f)
+            // Virtual Stick control inputs in velocity mode:
+            // - roll controls velocity along the X axis
+            // - pitch controls velocity along the Y axis
+            // - yaw controls yaw rate in degrees per second
+            //   (positive = clockwise, negative = counterclockwise)
+            // - verticalThrottle controls vertical speed
+            //   (positive = upward, negative = downward)
+            roll = clamp(cmd.vx, -23f, 23f)
+            pitch = clamp(cmd.vy, -23f, 23f)
             yaw = clamp(cmd.yaw, -100f, 100f)
             verticalThrottle = clamp(cmd.throttle, -6f, 6f)
         }

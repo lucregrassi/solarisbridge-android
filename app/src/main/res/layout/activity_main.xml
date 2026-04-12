@@ -51,7 +51,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Streams"
+                        android:text="Communication"
                         android:textStyle="bold"
                         android:textColor="?attr/colorOnSurface"
                         android:paddingBottom="8dp" />
@@ -61,7 +61,7 @@
                         style="@style/Widget.Material3.Button"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="START VIDEO"
+                        android:text="START IMAGE STREAM"
                         android:textStyle="bold"
                         app:cornerRadius="12dp" />
 
@@ -69,7 +69,7 @@
                         android:id="@+id/tvVideoStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="VIDEO: OFF"
+                        android:text="IMAGE STREAM: OFF"
                         android:textStyle="bold"
                         android:paddingTop="6dp"
                         android:paddingBottom="12dp"
@@ -97,7 +97,7 @@
                         android:id="@+id/btnCmd"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="START CMD"
+                        android:text="START COMMANDS"
                         app:cornerRadius="12dp"
                         android:textStyle="bold"/>
 
@@ -105,7 +105,7 @@
                         android:id="@+id/tvCmdStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="CMD: OFF"
+                        android:text="COMMANDS: OFF"
                         android:textSize="16sp"
                         android:paddingTop="8dp"/>
 
@@ -113,7 +113,7 @@
                         android:id="@+id/tvCmdLast"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Last cmd: -"
+                        android:text="Last command: -"
                         android:textSize="14sp"
                         android:paddingTop="4dp"/>
                 </LinearLayout>
