@@ -19,9 +19,14 @@ import com.rice.solarisbridge.v5.drone.control.GimbalController
 import com.rice.solarisbridge.v5.R
 import com.rice.solarisbridge.v5.drone.telemetry.TelemetryController
 import com.rice.solarisbridge.v5.drone.control.VideoStreamController
+import com.rice.solarisbridge.v5.drone.state.DroneState
 import dji.sdk.keyvalue.value.common.ComponentIndexType
+import dji.v5.common.error.IDJIError
+import dji.v5.common.register.DJISDKInitEvent
+import dji.v5.manager.SDKManager
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
+import dji.v5.manager.interfaces.SDKManagerCallback
 
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
@@ -49,9 +54,44 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var videoStreamController: VideoStreamController
     private lateinit var commandSystemController: CommandSystemController
 
+    private val sdkCallback: SDKManagerCallback = object : SDKManagerCallback {
+        override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
+            if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                SDKManager.getInstance().registerApp()
+            }
+        }
+
+        override fun onRegisterSuccess() {
+            Log.i("MainActivity", "onRegisterSuccess")
+        }
+
+        override fun onRegisterFailure(error: IDJIError?) {
+            Log.e("MainActivity", "onRegisterFailure: ${error?.description()}")
+        }
+
+        override fun onDatabaseDownloadProgress(current: Long, total: Long) {
+            val progress = if (total > 0) (100 * current / total) else 0
+            Log.i("MainActivity", "DB progress: $progress%")
+        }
+
+        override fun onProductConnect(productId: Int) {
+            DroneState.setConnected(true)
+        }
+
+        override fun onProductDisconnect(productId: Int) {
+            DroneState.setConnected(false)
+        }
+
+        override fun onProductChanged(productId: Int) {
+            DroneState.setConnected(true)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        SDKManager.getInstance().init(applicationContext, sdkCallback)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.topAppBar)
         setSupportActionBar(toolbar)

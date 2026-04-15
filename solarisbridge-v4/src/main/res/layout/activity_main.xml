@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="SOLARIS Bridge V4"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:paddingBottom="24dp" />
+
+    <TextView
+        android:id="@+id/tvSdkStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="SDK status: checking..."
+        android:textSize="18sp"
+        android:paddingBottom="16dp" />
+
+    <TextView
+        android:id="@+id/tvProductStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Product status: checking..."
+        android:textSize="18sp"
+        android:paddingBottom="16dp" />
+
+    <TextView
+        android:id="@+id/tvModel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Model: -"
+        android:textSize="18sp" />
+
+</LinearLayout>

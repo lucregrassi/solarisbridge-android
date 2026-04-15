@@ -16,7 +16,7 @@
         android:required="true" />
 
     <application
-        android:name=".app.MyApplication"
+        android:name=".app.BridgeAppV5"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -28,7 +28,7 @@
 
         <meta-data
             android:name="com.dji.sdk.API_KEY"
-            android:value="14c199bd48220d73800ab4a0" />
+            android:value="e9356bf044d23caaab259177" />
 
         <activity android:name=".ui.SettingsActivity" />
 

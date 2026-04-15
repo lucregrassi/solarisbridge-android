@@ -18,6 +18,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SOLARIS Bridge V5"
-include(":solarisbridge-v5")
-include(":android-sdk-v5-uxsdk")
+rootProject.name = "SOLARIS Bridge"
+include ':solarisbridge-v4'
+include ':solarisbridge-v5'
+include ':android-sdk-v5-uxsdk'
