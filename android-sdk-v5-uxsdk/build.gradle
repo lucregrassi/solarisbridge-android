@@ -1,6 +1,4 @@
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
-apply plugin: 'kotlin-kapt'
 
 android {
     namespace "dji.v5.ux"
@@ -15,11 +13,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions{
-        jvmTarget = JavaVersion.VERSION_1_8
-        freeCompilerArgs += ["-Xjvm-default=all"]
     }
 
     buildFeatures {
