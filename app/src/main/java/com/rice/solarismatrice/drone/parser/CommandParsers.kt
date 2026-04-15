@@ -1,8 +1,10 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.drone.parser
 
+import com.rice.solarismatrice.drone.model.DroneCmd
+import com.rice.solarismatrice.drone.model.GimbalCmd
 import org.json.JSONObject
 
-object CmdParsers {
+object CommandParsers {
 
     fun parseDrone(json: String): DroneCmd? = try {
         val o = JSONObject(json)

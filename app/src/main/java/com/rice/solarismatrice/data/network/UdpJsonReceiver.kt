@@ -1,10 +1,9 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.data.network
 
 import android.util.Log
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.SocketException
-import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicBoolean
 
 class UdpJsonReceiver(
@@ -31,7 +30,7 @@ class UdpJsonReceiver(
                     s.receive(p)
 
                     val msg = p.data.copyOfRange(p.offset, p.offset + p.length)
-                        .toString(Charset.forName("UTF-8"))
+                        .toString(Charsets.UTF_8)
                         .trim()
 
                     val fromIp = p.address?.hostAddress ?: "?"

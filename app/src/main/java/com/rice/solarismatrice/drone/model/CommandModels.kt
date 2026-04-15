@@ -1,4 +1,4 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.drone.model
 
 data class DroneCmd(
     val vx: Float,        // m/s o normalized: dipende da come mapperai poi

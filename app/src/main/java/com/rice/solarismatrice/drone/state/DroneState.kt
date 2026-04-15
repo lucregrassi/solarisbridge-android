@@ -1,4 +1,4 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.drone.state
 
 import kotlinx.coroutines.flow.MutableStateFlow
 

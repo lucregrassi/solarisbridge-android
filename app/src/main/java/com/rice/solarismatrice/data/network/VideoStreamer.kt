@@ -1,4 +1,4 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.data.network
 
 import android.util.Log
 import java.io.BufferedOutputStream
@@ -7,9 +7,9 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 
-class ImageStreamer(private val ip: String, private val port: Int) {
+class VideoStreamer(private val ip: String, private val port: Int) {
 
-    private val TAG = "ImageStreamer"
+    private val TAG = "VideoStreamer"
     private val running = AtomicBoolean(false)
 
     @Volatile private var socket: Socket? = null

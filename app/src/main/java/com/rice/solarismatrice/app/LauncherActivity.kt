@@ -1,8 +1,11 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.app
 
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import com.rice.solarismatrice.data.prefs.AppPrefs
+import com.rice.solarismatrice.ui.MainActivity
+import com.rice.solarismatrice.ui.SettingsActivity
 
 class LauncherActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

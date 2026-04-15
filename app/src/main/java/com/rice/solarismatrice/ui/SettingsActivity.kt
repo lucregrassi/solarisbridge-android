@@ -1,45 +1,54 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.appbar.MaterialToolbar
+import com.rice.solarismatrice.data.prefs.AppPrefs
+import com.rice.solarismatrice.data.network.NetUtils
+import com.rice.solarismatrice.R
 
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var tvControllerIp: TextView
+    private lateinit var tvDeviceIp: TextView
     private lateinit var etPcIp: EditText
-    private lateinit var etVideoPort: EditText
-    private lateinit var etTelemPort: EditText
-    private lateinit var etControllerPort: EditText // <-- nuovo campo
+    private lateinit var etTelemetryTxPort: EditText
+    private lateinit var etVideoTxPort: EditText
+    private lateinit var etFlightCmdRxPort: EditText
+    private lateinit var etGimbalCmdRxPort: EditText
     private lateinit var btnSave: Button
     private lateinit var tvStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
-        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar)
+        val toolbar = findViewById<MaterialToolbar>(R.id.topAppBar)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        tvControllerIp = findViewById(R.id.tvControllerIp)
+        tvDeviceIp = findViewById(R.id.tvDeviceIp)
         etPcIp = findViewById(R.id.etPcIp)
-        etVideoPort = findViewById(R.id.etVideoPort)
-        etTelemPort = findViewById(R.id.etTelemPort)
-        etControllerPort = findViewById(R.id.etControllerPort)
+        etTelemetryTxPort = findViewById(R.id.etTelemetryTxPort)
+        etVideoTxPort = findViewById(R.id.etVideoTxPort)
+        etFlightCmdRxPort = findViewById(R.id.etFlightCmdRxPort)
+        etGimbalCmdRxPort = findViewById(R.id.etGimbalCmdRxPort)
         btnSave = findViewById(R.id.btnSave)
         tvStatus = findViewById(R.id.tvStatus)
 
         // IP del controller (best-effort)
-        tvControllerIp.text = "Controller IP: ${NetUtils.getLocalIpv4() ?: "non disponibile"}"
+        tvDeviceIp.text = "Device IP: ${NetUtils.getFirstLocalIpv4() ?: "non disponibile"}"
 
         // Precarica valori salvati (se esistono)
         AppPrefs.getPcIp(this)?.let { etPcIp.setText(it) }
-        etVideoPort.setText(AppPrefs.getVideoPort(this).toString())
-        etTelemPort.setText(AppPrefs.getTelemPort(this).toString())
-        etControllerPort.setText(AppPrefs.getControllerPort(this).toString()) // <- precarica
+        etTelemetryTxPort.setText(AppPrefs.getTelemetryTxPort(this).toString())
+        etVideoTxPort.setText(AppPrefs.getVideoTxPort(this).toString())
+        etFlightCmdRxPort.setText(AppPrefs.getFlightCmdRxPort(this).toString())
+        etGimbalCmdRxPort.setText(AppPrefs.getGimbalCmdRxPort(this).toString())
 
         btnSave.setOnClickListener {
             validateSaveAndGo()
@@ -48,30 +57,49 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun validateSaveAndGo() {
         val ip = etPcIp.text.toString().trim()
-        val videoPort = etVideoPort.text.toString().toIntOrNull() ?: -1
-        val telemPort = etTelemPort.text.toString().toIntOrNull() ?: -1
-        val controllerPort = etControllerPort.text.toString().toIntOrNull() ?: -1
+        val telemetryTxPort = etTelemetryTxPort.text.toString().toIntOrNull() ?: -1
+        val videoTxPort = etVideoTxPort.text.toString().toIntOrNull() ?: -1
+        val flightCmdRxPort = etFlightCmdRxPort.text.toString().toIntOrNull() ?: -1
+        val gimbalCmdRxPort = etGimbalCmdRxPort.text.toString().toIntOrNull() ?: -1
 
         // Validazioni immediate
         if (!NetUtils.isValidIpv4(ip)) {
             tvStatus.text = "IP del PC non valido"
             return
         }
-        if (videoPort !in 1..65535) {
+        if (telemetryTxPort !in 1024..65535) {
+            tvStatus.text = "Porta TELEMETRY non valida"
+            return
+        }
+        if (videoTxPort !in 1024..65535) {
             tvStatus.text = "Porta VIDEO non valida"
             return
         }
-        if (telemPort !in 1..65535) {
-            tvStatus.text = "Porta TELEMETRIA non valida"
+        if (flightCmdRxPort !in 1024..65535) {
+            tvStatus.text = "Porta FLIGHT CMD non valida"
             return
         }
-        if (controllerPort !in 1..65535) {
-            tvStatus.text = "Porta CONTROLLER non valida"
+        if (gimbalCmdRxPort !in 1024..65535) {
+            tvStatus.text = "Porta GIMBAL CMD non valida"
+            return
+        }
+
+        val ports = listOf(telemetryTxPort, videoTxPort, flightCmdRxPort, gimbalCmdRxPort)
+        if (ports.toSet().size != ports.size) {
+            tvStatus.text = "Le porte devono essere tutte diverse"
             return
         }
 
         // Salva subito (nessun test di rete)
-        AppPrefs.save(this@SettingsActivity, ip, videoPort, telemPort, controllerPort)
+        AppPrefs.saveNetworkConfig(
+            this@SettingsActivity,
+            ip,
+            telemetryTxPort,
+            videoTxPort,
+            flightCmdRxPort,
+            gimbalCmdRxPort
+        )
+
         tvStatus.text = "Configurazione salvata."
 
         // Vai alla MainActivity
@@ -100,12 +128,12 @@ class SettingsActivity : AppCompatActivity() {
         return true
     }
 
-    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.app_menu, menu)
         return true
     }
 
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.menu_main -> {
                 val intent = Intent(this, MainActivity::class.java)

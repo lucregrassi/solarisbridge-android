@@ -1,8 +1,10 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.app
 
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import com.cySdkyc.clx.Helper
+import com.rice.solarismatrice.drone.state.DroneState
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
@@ -14,12 +16,12 @@ class MyApplication : Application() {
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
-        com.cySdkyc.clx.Helper.install(this)
+        Helper.install(this)
     }
 
     override fun onCreate() {
         super.onCreate()
-        SDKManager.getInstance().init(this,object:SDKManagerCallback{
+        SDKManager.getInstance().init(this,object: SDKManagerCallback {
             override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
                 Log.i(TAG, "onInitProcess: ")
                 if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
@@ -33,7 +35,8 @@ class MyApplication : Application() {
                 Log.i(TAG, "onRegisterFailure: ")
             }
             override fun onDatabaseDownloadProgress(current: Long, total: Long) {
-                Log.i(TAG, "onDatabaseDownloadProgress: ${current/total}")
+                val progress = if (total > 0) (100 * current / total) else 0
+                Log.i(TAG, "onDatabaseDownloadProgress: $progress%")
             }
             override fun onProductConnect(productId: Int) {
                 Log.i(TAG, "onProductConnect: $productId")

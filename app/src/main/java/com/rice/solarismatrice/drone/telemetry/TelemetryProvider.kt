@@ -1,11 +1,10 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.drone.telemetry
 
 import android.util.Log
 import dji.sdk.keyvalue.key.BatteryKey
+import dji.sdk.keyvalue.key.DJIFlightControllerKey
 import dji.sdk.keyvalue.key.DJIKey
 import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.FlightControllerKey.KeyAircraftLocation3D
-import dji.sdk.keyvalue.key.FlightControllerKey.KeyUltrasonicHeight
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.Attitude
 import dji.sdk.keyvalue.value.common.ComponentIndexType
@@ -13,6 +12,7 @@ import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.common.Velocity3D
 import dji.v5.common.callback.CommonCallbacks
+import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -25,7 +25,7 @@ object TelemetryProvider {
         val ts: Long = System.currentTimeMillis(),
         val lat: Double? = null,
         val lon: Double? = null,
-        val alt: Double? = null,
+        val ultrasonicHeight: Double? = null,
         val velX: Double? = null,
         val velY: Double? = null,
         val velZ: Double? = null,
@@ -56,7 +56,7 @@ object TelemetryProvider {
                     onValue(t)
                 }
 
-                override fun onFailure(error: dji.v5.common.error.IDJIError) {
+                override fun onFailure(error: IDJIError) {
                     Log.w(TAG, "getValue failed for key=$key: ${error.description()}")
                 }
             })
@@ -89,8 +89,8 @@ object TelemetryProvider {
         }
 
         // Define keys with correct generic types
-        val kLoc3d: DJIKey<LocationCoordinate3D> = KeyTools.createKey(KeyAircraftLocation3D)
-        val kUltra: DJIKey<Int> = KeyTools.createKey(KeyUltrasonicHeight)
+        val kLoc3d: DJIKey<LocationCoordinate3D> = KeyTools.createKey(DJIFlightControllerKey.KeyAircraftLocation3D)
+        val kUltra: DJIKey<Int> = KeyTools.createKey(DJIFlightControllerKey.KeyUltrasonicHeight)
         val kVel: DJIKey<Velocity3D> = KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity)
         val kAtt: DJIKey<Attitude> = KeyTools.createKey(FlightControllerKey.KeyAircraftAttitude)
         val kBatt: DJIKey<Int> = KeyTools.createKey(BatteryKey.KeyChargeRemainingInPercent, ComponentIndexType.LEFT_OR_MAIN)
@@ -104,7 +104,7 @@ object TelemetryProvider {
 
         listenAndFetch(km, kUltra) { v ->
             val meters = try { v.toDouble() / 10.0 } catch (_: Throwable) { v.toDouble() }
-            update { s -> s.copy(alt = meters) }
+            update { s -> s.copy(ultrasonicHeight = meters) }
             Log.d(TAG, "ULTRA raw=$v -> ${meters}m")
         }
 

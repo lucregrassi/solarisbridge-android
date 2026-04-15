@@ -1,10 +1,10 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.data.network
 
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
 object NetUtils {
-    fun getLocalIpv4(): String? {
+    fun getFirstLocalIpv4(): String? {
         return try {
             NetworkInterface.getNetworkInterfaces().toList()
                 .asSequence()

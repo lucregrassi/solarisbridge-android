@@ -16,7 +16,7 @@
         android:required="true" />
 
     <application
-        android:name=".MyApplication"
+        android:name=".app.MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -30,10 +30,10 @@
             android:name="com.dji.sdk.API_KEY"
             android:value="14c199bd48220d73800ab4a0" />
 
-        <activity android:name=".SettingsActivity" />
+        <activity android:name=".ui.SettingsActivity" />
 
         <activity
-            android:name=".LauncherActivity"
+            android:name=".app.LauncherActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -42,7 +42,7 @@
         </activity>
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true">
 
             <intent-filter>

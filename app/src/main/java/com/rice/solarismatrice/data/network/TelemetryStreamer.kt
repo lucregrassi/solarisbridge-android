@@ -1,6 +1,7 @@
-package com.rice.solarismatrice
+package com.rice.solarismatrice.data.network
 
 import android.util.Log
+import com.rice.solarismatrice.drone.telemetry.TelemetryProvider
 import org.json.JSONObject
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -44,7 +45,7 @@ class TelemetryStreamer(private val ip: String, private val port: Int) {
             json.put("ts", s.ts)
             json.putNullable("lat", s.lat)
             json.putNullable("lon", s.lon)
-            json.putNullable("alt", s.alt)
+            json.putNullable("ultrasonic_height", s.ultrasonicHeight)
             json.putNullable("vel_x", s.velX)
             json.putNullable("vel_y", s.velY)
             json.putNullable("vel_z", s.velZ)
