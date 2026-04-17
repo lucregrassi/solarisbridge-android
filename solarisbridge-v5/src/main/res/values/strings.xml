@@ -1,3 +1,48 @@
 <resources>
     <string name="app_name">Bridge V5</string>
+
+    <string name="home_title">Home</string>
+    <string name="settings_title">Settings</string>
+    <string name="communication_title">Communication</string>
+
+    <string name="start_video_stream">Start video stream</string>
+    <string name="stop_video_stream">Stop video stream</string>
+    <string name="video_stream_on">Video stream: on</string>
+    <string name="video_stream_off">Video stream: off</string>
+
+    <string name="start_telemetry_stream">Start telemetry stream</string>
+    <string name="stop_telemetry_stream">Stop telemetry stream</string>
+    <string name="telemetry_stream_on">Telemetry stream: on</string>
+    <string name="telemetry_stream_off">Telemetry stream: off</string>
+
+    <string name="start_command_receiver">Start command receiver</string>
+    <string name="stop_command_receiver">Stop command receiver</string>
+    <string name="command_system_on">Command system: on</string>
+    <string name="command_system_off">Command system: off</string>
+
+    <string name="last_command_placeholder">Last command: -</string>
+    <string name="last_command_format">Last command: %1$s</string>
+
+    <string name="device_ip_placeholder">Device IP:</string>
+    <string name="device_ip_format">Device IP: %1$s</string>
+    <string name="not_available">not available</string>
+
+    <string name="computer_ip_hint">Computer IP</string>
+    <string name="drone_to_pc">Drone → PC</string>
+    <string name="pc_to_drone">PC → Drone</string>
+    <string name="telemetry_port_hint">Telemetry port (Drone → PC)</string>
+    <string name="video_port_hint">Video port (Drone → PC)</string>
+    <string name="flight_command_port_hint">Flight command port (PC → Drone)</string>
+    <string name="gimbal_command_port_hint">Gimbal command port (PC → Drone)</string>
+    <string name="save">Save</string>
+
+    <string name="error_invalid_pc_ip">Invalid computer IP</string>
+    <string name="error_invalid_telemetry_port">Invalid telemetry port</string>
+    <string name="error_invalid_video_port">Invalid video port</string>
+    <string name="error_invalid_flight_cmd_port">Invalid flight command port</string>
+    <string name="error_invalid_gimbal_cmd_port">Invalid gimbal command port</string>
+    <string name="error_ports_must_be_different">All ports must be different</string>
+
+    <string name="configuration_saved">Configuration saved.</string>
+    <string name="configuration_required_before_proceeding">Configuration required before proceeding</string>
 </resources>

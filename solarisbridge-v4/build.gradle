@@ -2,13 +2,13 @@ apply plugin: 'com.android.application'
 
 android {
     namespace 'com.rice.solarisbridge.v4'
-    compileSdk 34
+    compileSdk 35
     useLibrary 'org.apache.http.legacy'
 
     defaultConfig {
         applicationId "com.rice.solarisbridge.v4"
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -39,10 +39,11 @@ android {
 }
 
 dependencies {
+    implementation project(":solarisbridge-common")
+
     // do not follow the replacement suggestion
     implementation 'com.dji:dji-sdk:4.18'
     compileOnly 'com.dji:dji-sdk-provided:4.18'
-
     implementation libs.appcompat
     implementation libs.material.v180
     implementation libs.kotlinx.coroutines.android

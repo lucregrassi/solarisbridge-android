@@ -3,7 +3,7 @@ package com.rice.solarisbridge.v5.app
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import com.rice.solarisbridge.v5.data.prefs.AppPrefs
+import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v5.ui.MainActivity
 import com.rice.solarisbridge.v5.ui.SettingsActivity
 

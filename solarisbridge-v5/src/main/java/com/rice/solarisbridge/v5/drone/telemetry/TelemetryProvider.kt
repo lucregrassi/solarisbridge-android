@@ -16,35 +16,19 @@ import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import com.rice.solarisbridge.common.telemetry.model.TelemetrySnapshot
 
 object TelemetryProvider {
 
     private const val TAG = "TelemetryProvider"
 
-    data class Snapshot(
-        val ts: Long = System.currentTimeMillis(),
-        val lat: Double? = null,
-        val lon: Double? = null,
-        val ultrasonicHeight: Double? = null,
-        val velX: Double? = null,
-        val velY: Double? = null,
-        val velZ: Double? = null,
-        val roll: Double? = null,
-        val pitch: Double? = null,
-        val yaw: Double? = null,
-        val batteryPercent: Int? = null,
-        val homeLat: Double? = null,
-        val homeLon: Double? = null,
-        val compassHeading: Double? = null,
-    )
-
-    private val snapshot = AtomicReference(Snapshot())
+    private val snapshot = AtomicReference(TelemetrySnapshot())
     private val listening = AtomicBoolean(false)
     private val listenHolder = Any()
 
-    fun getSnapshot(): Snapshot = snapshot.get()
+    fun getSnapshot(): TelemetrySnapshot = snapshot.get()
 
-    private fun update(block: (Snapshot) -> Snapshot) {
+    private fun update(block: (TelemetrySnapshot) -> TelemetrySnapshot) {
         snapshot.updateAndGet { old -> block(old.copy(ts = System.currentTimeMillis())) }
     }
 

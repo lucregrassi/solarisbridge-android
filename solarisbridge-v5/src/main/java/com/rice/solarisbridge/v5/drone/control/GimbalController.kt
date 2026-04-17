@@ -1,7 +1,7 @@
 package com.rice.solarisbridge.v5.drone.control
 
 import android.util.Log
-import com.rice.solarisbridge.v5.drone.model.GimbalCmd
+import com.rice.solarisbridge.common.commands.model.GimbalCmd
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.EmptyMsg

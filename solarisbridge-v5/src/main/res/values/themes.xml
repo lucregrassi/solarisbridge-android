@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Base.Theme.SOLARISMatrice" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Base.Theme.SOLARISBridge" parent="Theme.Material3.Dark.NoActionBar">
 
         <!-- Colori “industrial” scuri -->
         <item name="colorPrimary">#121212</item>
@@ -15,9 +15,8 @@
         <item name="android:statusBarColor">#000000</item>
         <item name="android:navigationBarColor">#000000</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
     <style name="ToolbarPopupTheme" parent="ThemeOverlay.Material3.Dark"/>
-    <style name="Theme.SOLARISMatrice" parent="Base.Theme.SOLARISMatrice" />
+    <style name="Theme.SOLARISBridge" parent="Base.Theme.SOLARISBridge" />
 </resources>

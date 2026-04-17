@@ -2,8 +2,9 @@ package com.rice.solarisbridge.v5.drone.control
 
 import android.content.Context
 import android.util.Log
-import com.rice.solarisbridge.v5.data.prefs.AppPrefs
-import com.rice.solarisbridge.v5.data.network.VideoStreamer
+import com.rice.solarisbridge.common.contracts.BridgeVideoController
+import com.rice.solarisbridge.common.prefs.AppPrefs
+import com.rice.solarisbridge.common.streaming.VideoStreamer
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
@@ -12,17 +13,18 @@ class VideoStreamController(
     private val context: Context,
     private val cameraIndex: ComponentIndexType,
     private val tag: String = "VideoStreamController"
-) {
+) : BridgeVideoController {
+
     private var videoStreamer: VideoStreamer? = null
     private var frameListener: ICameraStreamManager.CameraFrameListener? = null
 
     private val streamManager: ICameraStreamManager?
         get() = MediaDataCenter.getInstance().cameraStreamManager
 
-    var isRunning: Boolean = false
+    override var isRunning: Boolean = false
         private set
 
-    fun rebuildFromPrefs() {
+    override fun rebuildFromPrefs() {
         val ip = AppPrefs.getPcIp(context) ?: return
         val videoTxPort = AppPrefs.getVideoTxPort(context)
 
@@ -33,7 +35,7 @@ class VideoStreamController(
         videoStreamer = VideoStreamer(ip, videoTxPort)
     }
 
-    fun start(isPreviewAttached: Boolean) {
+    override fun start(isPreviewAttached: Boolean) {
         val mgr = streamManager ?: run {
             Log.w(tag, "CameraStreamManager null")
             return
@@ -64,7 +66,7 @@ class VideoStreamController(
         Log.i(tag, "Video stream STARTED")
     }
 
-    fun stop() {
+    override fun stop() {
         if (!isRunning) return
 
         val mgr = streamManager
@@ -82,7 +84,7 @@ class VideoStreamController(
         Log.i(tag, "Video stream STOPPED")
     }
 
-    fun toggle(isPreviewAttached: Boolean) {
+    override fun toggle(isPreviewAttached: Boolean) {
         if (isRunning) stop() else start(isPreviewAttached)
     }
 }

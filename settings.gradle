@@ -22,3 +22,4 @@ rootProject.name = "SOLARIS Bridge"
 include ':solarisbridge-v4'
 include ':solarisbridge-v5'
 include ':android-sdk-v5-uxsdk'
+include ':solarisbridge-common'

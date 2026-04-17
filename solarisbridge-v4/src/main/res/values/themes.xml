@@ -1,4 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.SOLARISBridge" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Base.Theme.SOLARISBridge" parent="Theme.Material3.Dark.NoActionBar">
+
+        <!-- Colori “industrial” scuri -->
+        <item name="colorPrimary">#121212</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+
+        <item name="colorSurface">#121212</item>
+        <item name="colorOnSurface">#FFFFFF</item>
+
+        <item name="backgroundColor">#0E0E0E</item>
+
+        <!-- Status bar / navigation bar scure -->
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="ToolbarPopupTheme" parent="ThemeOverlay.Material3.Dark"/>
+    <style name="Theme.SOLARISBridge" parent="Base.Theme.SOLARISBridge" />
 </resources>

@@ -13,7 +13,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.rice.solarisbridge.v5.data.prefs.AppPrefs
+import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v5.drone.control.CommandSystemController
 import com.rice.solarisbridge.v5.drone.control.GimbalController
 import com.rice.solarisbridge.v5.R
@@ -177,7 +177,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     private fun showCmdLine(line: String) {
-        runOnUiThread { tvCmdLast.text = "Last command: $line" }
+        runOnUiThread {
+            tvCmdLast.text = getString(R.string.last_command_format, line)
+        }
     }
 
     private fun renderUiState() {
@@ -185,26 +187,26 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         val red = ColorStateList.valueOf(getColor(R.color.state_red))
 
         if (videoStreamController.isRunning) {
-            btnVideo.text = "STOP VIDEO STREAM"
+            btnVideo.text = getString(R.string.stop_video_stream)
             btnVideo.backgroundTintList = red
-            tvVideoStatus.text = "VIDEO STREAM: ON"
+            tvVideoStatus.text = getString(R.string.video_stream_on)
             tvVideoStatus.setTextColor(getColor(R.color.state_green))
         } else {
-            btnVideo.text = "START VIDEO STREAM"
+            btnVideo.text = getString(R.string.start_video_stream)
             btnVideo.backgroundTintList = green
-            tvVideoStatus.text = "VIDEO STREAM: OFF"
+            tvVideoStatus.text = getString(R.string.video_stream_off)
             tvVideoStatus.setTextColor(getColor(R.color.state_red))
         }
 
         if (telemetryController.isRunning) {
-            btnTelemetry.text = "STOP TELEMETRY STREAM"
+            btnTelemetry.text = getString(R.string.stop_telemetry_stream)
             btnTelemetry.backgroundTintList = red
-            tvTelemetryStatus.text = "TELEMETRY STREAM: ON"
+            tvTelemetryStatus.text = getString(R.string.telemetry_stream_on)
             tvTelemetryStatus.setTextColor(getColor(R.color.state_green))
         } else {
-            btnTelemetry.text = "START TELEMETRY STREAM"
+            btnTelemetry.text = getString(R.string.start_telemetry_stream)
             btnTelemetry.backgroundTintList = green
-            tvTelemetryStatus.text = "TELEMETRY STREAM: OFF"
+            tvTelemetryStatus.text = getString(R.string.telemetry_stream_off)
             tvTelemetryStatus.setTextColor(getColor(R.color.state_red))
         }
 
@@ -216,14 +218,14 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         val red = ColorStateList.valueOf(getColor(R.color.state_red))
 
         if (commandSystemController.isRunning) {
-            btnCmd.text = "STOP COMMAND RECEIVER"
+            btnCmd.text = getString(R.string.stop_command_receiver)
             btnCmd.backgroundTintList = red
-            tvCmdStatus.text = "COMMAND SYSTEM: ON"
+            tvCmdStatus.text = getString(R.string.command_system_on)
             tvCmdStatus.setTextColor(getColor(R.color.state_green))
         } else {
-            btnCmd.text = "START COMMAND RECEIVER"
+            btnCmd.text = getString(R.string.start_command_receiver)
             btnCmd.backgroundTintList = green
-            tvCmdStatus.text = "COMMAND SYSTEM: OFF"
+            tvCmdStatus.text = getString(R.string.command_system_off)
             tvCmdStatus.setTextColor(getColor(R.color.state_red))
         }
     }

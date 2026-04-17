@@ -5,10 +5,12 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import com.rice.solarisbridge.v5.drone.parser.CommandParsers
-import com.rice.solarisbridge.v5.data.prefs.AppPrefs
-import com.rice.solarisbridge.v5.data.network.UdpJsonReceiver
-import com.rice.solarisbridge.v5.drone.model.DroneCmd
+import com.rice.solarisbridge.common.commands.control.CommandWatchdog
+import com.rice.solarisbridge.common.commands.model.DroneCmd
+import com.rice.solarisbridge.common.commands.parser.CommandParsers
+import com.rice.solarisbridge.common.contracts.BridgeCommandController
+import com.rice.solarisbridge.common.network.UdpJsonReceiver
+import com.rice.solarisbridge.common.prefs.AppPrefs
 import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
 import dji.sdk.keyvalue.value.flightcontroller.RollPitchControlMode
 import dji.sdk.keyvalue.value.flightcontroller.VerticalControlMode
@@ -23,7 +25,8 @@ class CommandSystemController(
     private val gimbalController: GimbalController,
     private val onStatusLine: (String) -> Unit,
     private val tag: String = "CommandSystemController"
-) {
+) : BridgeCommandController {
+
     private var flightCmdReceiver: UdpJsonReceiver? = null
     private var gimbalCmdReceiver: UdpJsonReceiver? = null
 
@@ -42,10 +45,10 @@ class CommandSystemController(
     private var flightCmdRxPort = 7000
     private var gimbalCmdRxPort = 7001
 
-    var isRunning: Boolean = false
+    override var isRunning: Boolean = false
         private set
 
-    val expectedHz: Int = 20
+    override val expectedHz: Int = 20
 
     private val flightCommandWatchdog = CommandWatchdog(
         tag = "FlightCmdWatchdog",
@@ -67,7 +70,7 @@ class CommandSystemController(
         }
     }
 
-    fun rebuildFromPrefs() {
+    override fun rebuildFromPrefs() {
         val wasRunning = isRunning
         if (wasRunning) {
             stop(moveGimbalToNeutral = false)
@@ -84,7 +87,7 @@ class CommandSystemController(
         }
     }
 
-    fun start() {
+    override fun start() {
         if (isRunning) return
 
         vsManager.enableVirtualStick(object : CommonCallbacks.CompletionCallback {
@@ -117,7 +120,7 @@ class CommandSystemController(
         })
     }
 
-    fun stop(moveGimbalToNeutral: Boolean) {
+    override fun stop(moveGimbalToNeutral: Boolean) {
         if (!isRunning) return
 
         isRunning = false
@@ -149,7 +152,7 @@ class CommandSystemController(
         onStatusLine("CMD system STOPPED")
     }
 
-    fun toggle() {
+    override fun toggle() {
         if (isRunning) stop(moveGimbalToNeutral = true) else start()
     }
 

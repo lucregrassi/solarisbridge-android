@@ -61,6 +61,7 @@ android {
 
 dependencies {
     implementation project(":android-sdk-v5-uxsdk")
+    implementation project(":solarisbridge-common")
     implementation libs.dji.sdk.v5.aircraft
     compileOnly libs.dji.sdk.v5.aircraft.provided
 
