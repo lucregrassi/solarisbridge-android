@@ -2,7 +2,6 @@ package com.rice.solarisbridge.v5.drone.telemetry
 
 import android.content.Context
 import android.util.Log
-import com.rice.solarisbridge.common.contracts.BridgeTelemetryController
 import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.common.streaming.TelemetryStreamer
 import java.util.Timer
@@ -11,15 +10,15 @@ import kotlin.concurrent.fixedRateTimer
 class TelemetryController(
     private val context: Context,
     private val tag: String = "TelemetryController"
-) : BridgeTelemetryController {
+){
 
     private var telemetryStreamer: TelemetryStreamer? = null
     private var telemetryTimer: Timer? = null
 
-    override var isRunning: Boolean = false
+    var isRunning: Boolean = false
         private set
 
-    override fun rebuildFromPrefs() {
+    fun rebuildFromPrefs() {
         val ip = AppPrefs.getPcIp(context) ?: return
         val telemetryTxPort = AppPrefs.getTelemetryTxPort(context)
 
@@ -30,7 +29,7 @@ class TelemetryController(
         telemetryStreamer = TelemetryStreamer(ip, telemetryTxPort)
     }
 
-    override fun start() {
+    fun start() {
         if (isRunning) return
 
         TelemetryProvider.startIfNeeded()
@@ -50,7 +49,7 @@ class TelemetryController(
         Log.i(tag, "Telemetry stream STARTED")
     }
 
-    override fun stop() {
+    fun stop() {
         if (!isRunning) return
 
         telemetryTimer?.cancel()
@@ -63,7 +62,7 @@ class TelemetryController(
         Log.i(tag, "Telemetry stream STOPPED")
     }
 
-    override fun toggle() {
+    fun toggle() {
         if (isRunning) stop() else start()
     }
 }

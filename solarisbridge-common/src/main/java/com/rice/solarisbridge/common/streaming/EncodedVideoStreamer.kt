@@ -52,6 +52,8 @@ class EncodedVideoStreamer(
             return
         }
 
+        Log.d(tag, "sendFrame enqueue: length=$length")
+
         val frame = ByteArray(length)
         System.arraycopy(data, offset, frame, 0, length)
 

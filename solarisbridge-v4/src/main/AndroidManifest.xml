@@ -29,7 +29,7 @@
 
         <meta-data
             android:name="com.dji.sdk.API_KEY"
-            android:value="7eddd94504548a2e014a242f" />
+            android:value="${DJI_API_KEY_V4}" />
 
         <activity android:name=".ui.SettingsActivity" />
 

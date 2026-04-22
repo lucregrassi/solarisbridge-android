@@ -8,7 +8,6 @@ import android.util.Log
 import com.rice.solarisbridge.common.commands.control.CommandWatchdog
 import com.rice.solarisbridge.common.commands.model.DroneCmd
 import com.rice.solarisbridge.common.commands.parser.CommandParsers
-import com.rice.solarisbridge.common.contracts.BridgeCommandController
 import com.rice.solarisbridge.common.network.UdpJsonReceiver
 import com.rice.solarisbridge.common.prefs.AppPrefs
 import dji.sdk.keyvalue.value.flightcontroller.FlightCoordinateSystem
@@ -26,7 +25,7 @@ class CommandSystemController(
     private val onStatusLine: (String) -> Unit,
     private val onRunningChanged: (Boolean) -> Unit,
     private val tag: String = "CommandSystemController"
-) : BridgeCommandController {
+){
 
     private var flightCmdReceiver: UdpJsonReceiver? = null
     private var gimbalCmdReceiver: UdpJsonReceiver? = null
@@ -46,10 +45,10 @@ class CommandSystemController(
     private var flightCmdRxPort = 7000
     private var gimbalCmdRxPort = 7001
 
-    override var isRunning: Boolean = false
+    var isRunning: Boolean = false
         private set
 
-    override val expectedHz: Int = 20
+    val expectedHz: Int = 20
 
     private val flightCommandWatchdog = CommandWatchdog(
         tag = "FlightCmdWatchdog",
@@ -71,7 +70,7 @@ class CommandSystemController(
         }
     }
 
-    override fun rebuildFromPrefs() {
+    fun rebuildFromPrefs() {
         val wasRunning = isRunning
         if (wasRunning) {
             stop(moveGimbalToNeutral = false)
@@ -88,7 +87,7 @@ class CommandSystemController(
         }
     }
 
-    override fun start() {
+    fun start() {
         if (isRunning) return
 
         vsManager.enableVirtualStick(object : CommonCallbacks.CompletionCallback {
@@ -124,7 +123,7 @@ class CommandSystemController(
         })
     }
 
-    override fun stop(moveGimbalToNeutral: Boolean) {
+    fun stop(moveGimbalToNeutral: Boolean) {
         if (!isRunning) return
 
         isRunning = false
@@ -156,7 +155,7 @@ class CommandSystemController(
         onStatusLine("CMD system STOPPED")
     }
 
-    override fun toggle() {
+    fun toggle() {
         if (isRunning) stop(moveGimbalToNeutral = true) else start()
     }
 

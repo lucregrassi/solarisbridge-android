@@ -46,19 +46,21 @@ class VideoStreamController(
         }
 
         if (isRunning) return
-
         encodedVideoStreamer?.start()
-
+        isRunning = true
         val listener = ICameraStreamManager.ReceiveStreamListener { data, offset, length, _ ->
             if (!isRunning) return@ReceiveStreamListener
+
             if (length <= 0) return@ReceiveStreamListener
+
             encodedVideoStreamer?.sendFrame(data, offset, length)
+
         }
 
         frameListener = listener
+
         mgr.addReceiveStreamListener(cameraIndex, listener)
 
-        isRunning = true
         Log.i(tag, "Encoded video stream STARTED")
     }
 
