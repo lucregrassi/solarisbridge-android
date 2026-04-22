@@ -1,5 +1,10 @@
 # SOLARIS Bridge
 
+<p align="center">
+  <img src="solaris-bridge-banner.png" alt="SOLARIS Bridge banner" width="900">
+</p>
+
+Android apps for bridging DJI drone systems with an external PC over a local network.
 Android apps for bridging DJI drone systems with an external PC over a local network.
 
 The project contains two separate Android apps:
