@@ -510,7 +510,9 @@ Recommended precautions:
 - verify command axis mapping before flight
 - verify watchdog zero-command behavior
 - keep a manual recovery procedure available at all times
-
+- in our tests, switching the controller to **S mode** interrupted PC-driven command input and the aircraft returned to a stable hover state
+- always validate this behavior on your own hardware and firmware before relying on it as a safety procedure
+  
 ---
 
 ## Author
