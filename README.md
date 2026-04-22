@@ -1,6 +1,6 @@
 # SOLARIS Bridge
 
-Android project for bridging a DJI drone system with an external PC over the local network.
+Android apps for bridging DJI drone systems with an external PC over a local network.
 
 The project contains two separate Android apps:
 
@@ -495,3 +495,26 @@ Typical requirements:
 - proper DJI app key / SDK registration configuration
 - compatible Android device / smart controller
 - drone/controller supported by the corresponding SDK version
+
+---
+
+## Safety notes
+
+This project sends flight and gimbal commands to a real DJI system.
+
+Use it carefully and always test in a safe environment before any real operation.
+
+Recommended precautions:
+
+- test first with propellers removed whenever possible
+- verify command axis mapping before flight
+- verify watchdog zero-command behavior
+- keep a manual recovery procedure available at all times
+
+---
+
+## Author
+
+Lucrezia Grassi  
+GitHub: [lucregrassi](https://github.com/lucregrassi)  
+Email: [lucrezia.grassi@unige.it](mailto:lucrezia.grassi@unige.it)
