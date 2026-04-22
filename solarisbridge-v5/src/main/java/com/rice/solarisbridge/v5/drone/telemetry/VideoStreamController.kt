@@ -1,10 +1,9 @@
-package com.rice.solarisbridge.v5.drone.control
+package com.rice.solarisbridge.v5.drone.telemetry
 
 import android.content.Context
 import android.util.Log
-import com.rice.solarisbridge.common.contracts.BridgeVideoController
 import com.rice.solarisbridge.common.prefs.AppPrefs
-import com.rice.solarisbridge.common.streaming.VideoStreamer
+import com.rice.solarisbridge.common.streaming.EncodedVideoStreamer
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
@@ -13,18 +12,18 @@ class VideoStreamController(
     private val context: Context,
     private val cameraIndex: ComponentIndexType,
     private val tag: String = "VideoStreamController"
-) : BridgeVideoController {
+){
 
-    private var videoStreamer: VideoStreamer? = null
-    private var frameListener: ICameraStreamManager.CameraFrameListener? = null
+    private var encodedVideoStreamer: EncodedVideoStreamer? = null
+    private var frameListener: ICameraStreamManager.ReceiveStreamListener? = null
 
     private val streamManager: ICameraStreamManager?
         get() = MediaDataCenter.getInstance().cameraStreamManager
 
-    override var isRunning: Boolean = false
+    var isRunning: Boolean = false
         private set
 
-    override fun rebuildFromPrefs() {
+    fun rebuildFromPrefs() {
         val ip = AppPrefs.getPcIp(context) ?: return
         val videoTxPort = AppPrefs.getVideoTxPort(context)
 
@@ -32,10 +31,10 @@ class VideoStreamController(
             stop()
         }
 
-        videoStreamer = VideoStreamer(ip, videoTxPort)
+        encodedVideoStreamer = EncodedVideoStreamer(ip, videoTxPort)
     }
 
-    override fun start(isPreviewAttached: Boolean) {
+    fun start(isPreviewAttached: Boolean) {
         val mgr = streamManager ?: run {
             Log.w(tag, "CameraStreamManager null")
             return
@@ -48,43 +47,40 @@ class VideoStreamController(
 
         if (isRunning) return
 
-        videoStreamer?.start()
+        encodedVideoStreamer?.start()
 
-        val listener = ICameraStreamManager.CameraFrameListener { data, offset, length, width, height, _ ->
-            if (!isRunning) return@CameraFrameListener
-            if (length <= 0) return@CameraFrameListener
-
-            val frame = ByteArray(length)
-            System.arraycopy(data, offset, frame, 0, length)
-            videoStreamer?.sendRawYuv(frame, width, height)
+        val listener = ICameraStreamManager.ReceiveStreamListener { data, offset, length, _ ->
+            if (!isRunning) return@ReceiveStreamListener
+            if (length <= 0) return@ReceiveStreamListener
+            encodedVideoStreamer?.sendFrame(data, offset, length)
         }
 
         frameListener = listener
-        mgr.addFrameListener(cameraIndex, ICameraStreamManager.FrameFormat.NV21, listener)
+        mgr.addReceiveStreamListener(cameraIndex, listener)
 
         isRunning = true
-        Log.i(tag, "Video stream STARTED")
+        Log.i(tag, "Encoded video stream STARTED")
     }
 
-    override fun stop() {
+    fun stop() {
         if (!isRunning) return
 
         val mgr = streamManager
         frameListener?.let { listener ->
             try {
-                mgr?.removeFrameListener(listener)
+                mgr?.removeReceiveStreamListener(listener)
             } catch (t: Throwable) {
-                Log.w(tag, "removeFrameListener error", t)
+                Log.w(tag, "removeReceiveStreamListener error", t)
             }
         }
 
         frameListener = null
-        videoStreamer?.stop()
+        encodedVideoStreamer?.stop()
         isRunning = false
-        Log.i(tag, "Video stream STOPPED")
+        Log.i(tag, "Encoded video stream STOPPED")
     }
 
-    override fun toggle(isPreviewAttached: Boolean) {
+    fun toggle(isPreviewAttached: Boolean) {
         if (isRunning) stop() else start(isPreviewAttached)
     }
 }

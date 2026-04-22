@@ -3,7 +3,6 @@ package com.rice.solarisbridge.v4.app
 import android.app.Application
 import android.content.Context
 import com.cySdkyc.clx.Helper
-import com.rice.solarisbridge.v4.app.BridgeAppV4
 
 class BridgeBootstrapV4 : Application() {
 

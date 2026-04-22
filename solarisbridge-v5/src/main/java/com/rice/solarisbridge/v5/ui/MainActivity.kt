@@ -18,8 +18,7 @@ import com.rice.solarisbridge.v5.drone.control.CommandSystemController
 import com.rice.solarisbridge.v5.drone.control.GimbalController
 import com.rice.solarisbridge.v5.R
 import com.rice.solarisbridge.v5.drone.telemetry.TelemetryController
-import com.rice.solarisbridge.v5.drone.control.VideoStreamController
-import com.rice.solarisbridge.v5.drone.state.DroneState
+import com.rice.solarisbridge.v5.drone.telemetry.VideoStreamController
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
@@ -62,7 +61,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
 
         override fun onRegisterSuccess() {
-            Log.i("MainActivity", "onRegisterSuccess")
+            Log.i(tag, "onRegisterSuccess")
+            runOnUiThread {
+                detachPreview()
+                maybeAttachPreview()
+            }
         }
 
         override fun onRegisterFailure(error: IDJIError?) {
@@ -75,19 +78,21 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
 
         override fun onProductConnect(productId: Int) {
-            DroneState.setConnected(true)
+            Log.i(tag, "onProductConnect: productId=$productId")
         }
 
         override fun onProductDisconnect(productId: Int) {
-            DroneState.setConnected(false)
+            Log.i(tag, "onProductDisconnect: productId=$productId")
         }
 
         override fun onProductChanged(productId: Int) {
-            DroneState.setConnected(true)
+            Log.i(tag, "onProductChanged: productId=$productId")
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.i(tag, "onCreate")
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -112,6 +117,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onResume() {
+        Log.i(tag, "onResume")
         super.onResume()
 
         videoStreamController.rebuildFromPrefs()
@@ -123,6 +129,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onPause() {
+        Log.i(tag, "onPause")
         commandSystemController.stop(moveGimbalToNeutral = false)
         videoStreamController.stop()
         telemetryController.stop()
@@ -131,6 +138,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onDestroy() {
+        Log.i(tag, "onDestroy")
         commandSystemController.stop(moveGimbalToNeutral = false)
         videoStreamController.stop()
         telemetryController.stop()
@@ -156,7 +164,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         commandSystemController = CommandSystemController(
             context = this,
             gimbalController = gimbalController,
-            onStatusLine = { line -> showCmdLine(line) }
+            onStatusLine = { line -> showCmdLine(line) },
+            onRunningChanged = {
+                runOnUiThread { renderUiState() }
+            }
         )
     }
 
@@ -231,17 +242,20 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+        Log.i(tag, "onSurfaceTextureAvailable: ${w}x$h")
         surface = Surface(st)
         attachPreview(w, h)
     }
 
     override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {
+        Log.i(tag, "onSurfaceTextureSizeChanged: ${w}x$h")
         detachPreview()
         surface = Surface(st)
         attachPreview(w, h)
     }
 
     override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+        Log.i(tag, "onSurfaceTextureDestroyed")
         detachPreview()
         surface = null
         return true
@@ -250,12 +264,21 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
 
     private fun maybeAttachPreview() {
+        Log.i(
+            tag,
+            "maybeAttachPreview: texture=${videoTexture.width}x${videoTexture.height}, " +
+                    "surfaceTexture=${videoTexture.surfaceTexture != null}, surface=${surface != null}, previewAttached=$previewAttached"
+        )
         val st = videoTexture.surfaceTexture ?: return
         if (surface == null) surface = Surface(st)
         attachPreview(videoTexture.width, videoTexture.height)
     }
 
     private fun attachPreview(w: Int, h: Int) {
+        Log.i(
+            tag,
+            "attachPreview chiamata: w=$w h=$h surface=${surface != null} previewAttached=$previewAttached cameraIndex=$cameraIndex"
+        )
         val s = surface ?: return
         val mgr = streamManager ?: run {
             Log.w(tag, "CameraStreamManager non disponibile")
@@ -275,6 +298,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     private fun detachPreview() {
+        Log.i(tag, "detachPreview chiamata: surface=${surface != null} previewAttached=$previewAttached")
         val s = surface ?: return
         if (!previewAttached) return
         try {

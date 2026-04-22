@@ -24,6 +24,7 @@ class CommandSystemController(
     private val context: Context,
     private val gimbalController: GimbalController,
     private val onStatusLine: (String) -> Unit,
+    private val onRunningChanged: (Boolean) -> Unit,
     private val tag: String = "CommandSystemController"
 ) : BridgeCommandController {
 
@@ -105,6 +106,8 @@ class CommandSystemController(
                 startSendLoop()
 
                 isRunning = true
+                onRunningChanged(true)
+
                 flightCmdReceiver?.start()
                 gimbalCmdReceiver?.start()
 
@@ -114,6 +117,7 @@ class CommandSystemController(
             override fun onFailure(error: IDJIError) {
                 virtualStickEnabled = false
                 isRunning = false
+                onRunningChanged(false)
                 Log.e(tag, "enableVirtualStick failed: ${error.description()}")
                 onStatusLine("VS enable FAIL: ${error.description()}")
             }
