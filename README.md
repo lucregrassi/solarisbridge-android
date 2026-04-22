@@ -5,14 +5,13 @@
 </p>
 
 Android apps for bridging DJI drone systems with an external PC over a local network.
-Android apps for bridging DJI drone systems with an external PC over a local network.
 
 The project contains two separate Android apps:
 
-- **SOLARIS Bridge V4**: based on **DJI Mobile SDK V4**
-- **SOLARIS Bridge V5**: based on **DJI Mobile SDK V5**
+- **SOLARIS Bridge V4**, based on **DJI Mobile SDK V4**
+- **SOLARIS Bridge V5**, based on **DJI Mobile SDK V5**
 
-Both apps share a common goal:
+Both apps are designed to:
 
 - show the live camera preview on the Android device
 - send telemetry to a PC
@@ -31,9 +30,7 @@ The repository is organized into three main packages:
 ## Project structure
 
 ### `common`
-Shared utilities and reusable components used by both V4 and V5 apps.
-
-Main responsibilities:
+Shared utilities and reusable components for both apps, including:
 
 - network configuration persistence
 - UDP/TCP streaming helpers
@@ -42,26 +39,26 @@ Main responsibilities:
 - generic UDP receiver utilities
 
 ### `v4`
-Implementation for DJI Mobile SDK V4.
+Implementation based on DJI Mobile SDK V4.
 
-Target workflow:
+Main workflow:
 
-- local camera preview rendered on Android with `DJICodecManager`
-- telemetry acquisition through V4 APIs
+- local preview with `DJICodecManager`
+- telemetry through V4 APIs
 - flight control through V4 Virtual Stick
 - gimbal control through V4 gimbal APIs
-- video forwarding to PC using **JPEG frames captured from the Android preview**
+- video streaming to PC using **JPEG frames captured from the Android preview**
 
 ### `v5`
-Implementation for DJI Mobile SDK V5.
+Implementation based on DJI Mobile SDK V5.
 
-Target workflow:
+Main workflow:
 
-- local camera preview attached through `MediaDataCenter.getInstance().cameraStreamManager`
-- telemetry acquisition through DJI KeyManager listeners
+- local preview through `MediaDataCenter.getInstance().cameraStreamManager`
+- telemetry through DJI `KeyManager`
 - flight control through V5 Virtual Stick
 - gimbal control through V5 KeyManager actions
-- video forwarding to PC using the **encoded camera stream** received directly from the V5 camera stream manager
+- video streaming to PC using the **encoded camera stream** received from the V5 camera stream manager
 
 ---
 
@@ -74,26 +71,22 @@ Both app versions provide:
 - flight command reception from PC over UDP
 - gimbal command reception from PC over UDP
 - configurable network settings from the app UI
-- start/stop controls for:
-  - video stream
-  - telemetry stream
-  - command receiver system
+- start/stop controls for video, telemetry, and command reception
 
 ---
 
 ## Network configuration
 
-The app stores network settings through `AppPrefs`.
+Network settings are stored through `AppPrefs`.
 
 Default values:
 
-- **PC IP**: user-defined
 - **Telemetry TX port**: `6000`
 - **Video TX port**: `6001`
 - **Flight command RX port**: `7000`
 - **Gimbal command RX port**: `7001`
 
-These are saved in Android `SharedPreferences` under:
+Saved keys in `SharedPreferences`:
 
 - `pc_ip`
 - `telemetry_tx_port`
@@ -103,237 +96,97 @@ These are saved in Android `SharedPreferences` under:
 
 ---
 
-## How the system works
-
-The Android device acts as a bridge between the drone/controller side and a PC on the same network.
+## Data flow
 
 ### Android -> PC
-The app sends:
-
 - **telemetry** via UDP
 - **video** via TCP
 
 ### PC -> Android
-The app receives:
-
 - **flight commands** via UDP JSON
 - **gimbal commands** via UDP JSON
 
 ---
 
-## Telemetry streaming
+## Telemetry and command system
 
-Telemetry is sent to the PC every **100 ms**.
-
-### Telemetry payload
-The telemetry JSON includes fields such as:
+Telemetry is sent every **100 ms** and includes fields such as:
 
 - `ts`
 - `lat`
 - `lon`
 - `ultrasonic_height`
-- `vel_x`
-- `vel_y`
-- `vel_z`
-- `roll`
-- `pitch`
-- `yaw`
+- `vel_x`, `vel_y`, `vel_z`
+- `roll`, `pitch`, `yaw`
 - `battery_percent`
-- `home_lat`
-- `home_lon`
+- `home_lat`, `home_lon`
 - `compass_heading`
 
-### V4 telemetry
-In V4, telemetry is gathered from:
-
-- `FlightControllerState`
-- `BatteryState`
-
-and sent periodically by `TelemetryController`.
-
-### V5 telemetry
-In V5, telemetry is gathered by `TelemetryProvider` using DJI `KeyManager` listeners and then transmitted through `TelemetryStreamer`.
-
----
-
-## Flight command system
-
-Both versions implement a command receiver for flight control.
-
-### Transport
-- UDP
-- JSON messages
-
-### Default flight command RX port
-- `7000`
-
-### Expected command format
-The parser expects a drone command structure with values like:
+Flight commands are received via UDP JSON on port `7000` and use values such as:
 
 - `vx`
 - `vy`
 - `yaw`
 - `throttle`
 
-### Flight command loop
-Both versions run a control send loop at:
-
-- **20 Hz**
-- period: **50 ms**
-
-### Watchdog safety
-Both versions include a watchdog that:
-
-- monitors the arrival of flight commands
-- triggers after about **250 ms** without updates
-- sends a **zero command** when commands stop arriving
-
-This helps avoid stale motion commands being held indefinitely.
-
----
-
-## Gimbal command system
-
-Both versions implement a dedicated UDP receiver for gimbal commands.
-
-### Transport
-- UDP
-- JSON messages
-
-### Default gimbal command RX port
-- `7001`
-
-### Expected command format
-The parser expects a gimbal command structure with fields like:
+Gimbal commands are received via UDP JSON on port `7001` and use:
 
 - `yaw`
 - `pitch`
 - `roll`
 
-### V4 gimbal control
-V4 uses DJI V4 gimbal rotation APIs with:
-
-- `Rotation`
-- `RotationMode.ABSOLUTE_ANGLE`
-
-### V5 gimbal control
-V5 uses DJI V5 KeyManager actions with:
-
-- `GimbalAngleRotation`
-- `GimbalAngleRotationMode.ABSOLUTE_ANGLE`
-
-and also supports a neutral stop/reset behavior.
+Both V4 and V5 run the flight command send loop at **20 Hz** and include a watchdog that sends a zero command if updates stop arriving for about **250 ms**.
 
 ---
 
 ## Video streaming
 
-Video transmission differs significantly between SDK V4 and SDK V5.
+Video handling differs between V4 and V5.
 
----
+### V4
+V4 shows the local preview through `VideoFeeder` and `DJICodecManager`, rendering it inside a `TextureView`.
 
-## Video streaming in V4
+In the final implementation, video is sent to the PC by capturing the rendered preview and forwarding it as JPEG frames through `JpegFrameStreamer`.
 
-### Local preview
-In V4, the local preview on Android is rendered through:
+Current characteristics:
 
-- `VideoFeeder`
-- `DJICodecManager`
-
-The preview is displayed in a `TextureView`.
-
-### PC streaming approach used in this project
-In the final implementation, the V4 app sends video to the PC using:
-
-- `JpegFrameStreamer`
-- periodic capture of the Android `TextureView`
-- JPEG compression
-- TCP transmission to the PC
-
-### Why JPEG in V4
-During development, direct forwarding of the encoded stream through V4 was investigated, but the practical stable solution used here is the JPEG-based one.
-
-This means:
-
-- local preview remains visible on the device
-- the PC receives frames extracted from the already-rendered preview
-- the stream is simpler to decode on the PC
-- latency is higher than direct encoded streaming
-
-### Current V4 video characteristics
 - source: rendered preview from `TextureView`
 - protocol: TCP
 - default port: `6001`
 - default JPEG FPS: `8`
 - default JPEG quality: `70`
 
-### V4 packet format
-Each frame is sent as:
+Packet format:
 
 - 4-byte magic: `VSTR`
 - 1-byte packet type
 - 4-byte payload length
 - JPEG payload
 
-Packet type for JPEG frames:
+JPEG packet type:
 
 - `2`
 
----
+This solution is stable and keeps the local preview visible, but it introduces more latency.
 
-## Video streaming in V5
+### V5
+V5 attaches preview directly through `MediaDataCenter.getInstance().cameraStreamManager` and an Android `Surface`.
 
-### Local preview
-In V5, preview is attached directly through:
+In the final implementation, the PC stream uses the encoded camera stream received through `ICameraStreamManager.ReceiveStreamListener` and forwarded through `EncodedVideoStreamer`.
 
-- `MediaDataCenter.getInstance().cameraStreamManager`
-- `putCameraStreamSurface(...)`
+Current characteristics:
 
-The preview surface is managed through a `TextureView` and Android `Surface`.
-
-### PC streaming approach used in this project
-In V5, the app sends the **encoded stream** directly to the PC through:
-
-- `ICameraStreamManager.ReceiveStreamListener`
-- `EncodedVideoStreamer`
-
-This is the preferred near-live approach.
-
-### Current V5 video characteristics
 - source: encoded camera stream from DJI V5 APIs
 - protocol: TCP
 - default port: `6001`
 
-### V5 packet format
-Each frame is sent as:
+Packet format:
 
 - 4-byte magic: `VSTR`
 - 4-byte payload length
 - raw encoded frame payload
 
-This stream is intended to be decoded on the PC side.
-
----
-
-## Important difference between V4 and V5 video pipelines
-
-### V4
-The final working implementation in this project uses:
-
-- **preview on Android**
-- **JPEG capture from the preview**
-- **JPEG forwarding to the PC**
-
-This is robust, but introduces additional latency.
-
-### V5
-The final working implementation uses:
-
-- **preview on Android**
-- **direct encoded stream callback**
-- **encoded frame forwarding to the PC**
-
-This is more suitable for lower-latency live streaming.
+This is the preferred lower-latency solution.
 
 ---
 
@@ -341,19 +194,11 @@ This is more suitable for lower-latency live streaming.
 
 Each app includes:
 
-### LauncherActivity
-Checks whether the network configuration already exists.
+### `LauncherActivity`
+Opens `SettingsActivity` if configuration is missing, otherwise opens `MainActivity`.
 
-If the PC IP is missing:
-
-- opens `SettingsActivity`
-
-Otherwise:
-
-- opens `MainActivity`
-
-### SettingsActivity
-Allows configuration of:
+### `SettingsActivity`
+Lets the user configure:
 
 - PC IP
 - telemetry TX port
@@ -361,148 +206,43 @@ Allows configuration of:
 - flight command RX port
 - gimbal command RX port
 
-Validation includes:
+Validation includes IPv4 format, valid port range, and unique ports.
 
-- valid IPv4 format
-- valid port range
-- all ports must be different
-
-### MainActivity
-Main operational UI with:
+### `MainActivity`
+Provides:
 
 - live preview
-- video stream start/stop button
-- telemetry stream start/stop button
-- command receiver start/stop button
+- video stream start/stop
+- telemetry stream start/stop
+- command receiver start/stop
 - command status text
 - last received command text
 
 ---
 
-## Common components
+## Setup
 
-### `AppPrefs`
-Stores and loads network settings from `SharedPreferences`.
+Before building the project, you must provide your own DJI API keys in `local.properties`.
 
-### `TelemetryStreamer`
-Shared UDP telemetry sender used by V5 and reusable by other modules.
+Example:
 
-### `EncodedVideoStreamer`
-Shared TCP sender for raw/encoded video payloads.
+```properties
+DJI_API_KEY_V4=your_v4_key_here
+DJI_API_KEY_V5=your_v5_key_here
+```
 
-### `JpegFrameStreamer`
-Shared TCP sender for JPEG-compressed preview frames.
+You also need:
 
----
+* Android Studio
+* Gradle
+* DJI Mobile SDK V4 dependencies for the V4 app
+* DJI Mobile SDK V5 dependencies for the V5 app
+* compatible Android device / smart controller
+* drone/controller supported by the corresponding SDK version
 
-## V4 architecture summary
-
-Main classes:
-
-- `BridgeBootstrapV4`
-- `BridgeAppV4`
-- `LauncherActivity`
-- `SettingsActivity`
-- `MainActivity`
-- `TelemetryController`
-- `VideoStreamController`
-- `CommandSystemController`
-- `GimbalController`
-
-### SDK registration
-V4 uses `BridgeBootstrapV4` + `BridgeAppV4` to initialize the DJI SDK and connect to the product.
-
-### Product access
-The current product instance is accessed through:
-
-- `BridgeAppV4.getProductInstance()`
-
-### Flight control
-Uses V4 `FlightController` virtual stick:
-
-- velocity control for roll/pitch
-- angular velocity control for yaw
-- velocity control for vertical throttle
-- body coordinate system
+Do not commit real DJI keys to the repository.
 
 ---
-
-## V5 architecture summary
-
-Main classes:
-
-- `BridgeAppV5`
-- `LauncherActivity`
-- `SettingsActivity`
-- `MainActivity`
-- `TelemetryProvider`
-- `TelemetryController`
-- `VideoStreamController`
-- `CommandSystemController`
-- `GimbalController`
-
-### SDK initialization
-V5 initializes through:
-
-- `SDKManager.getInstance().init(...)`
-- `registerApp()`
-
-### Preview
-Preview is managed via:
-
-- `MediaDataCenter`
-- `ICameraStreamManager`
-- `putCameraStreamSurface(...)`
-- `removeCameraStreamSurface(...)`
-
-### Flight control
-Uses V5:
-
-- `VirtualStickManager`
-- `VirtualStickFlightControlParam`
-
-### Telemetry
-Uses V5:
-
-- `KeyManager`
-- typed DJI keys
-- listen + fetch strategy
-
----
-
-## PC side integration
-
-The project is designed to work with a PC receiver application.
-
-Typical PC responsibilities:
-
-- listen for telemetry UDP packets on port `6000`
-- listen for video TCP packets on port `6001`
-- send flight command UDP JSON packets to port `7000`
-- send gimbal command UDP JSON packets to port `7001`
-
-### Example command directions
-In the current system, flight commands are interpreted by the Android app and mapped into DJI virtual stick parameters.
-
-Always validate axis mapping on the real platform before operational use.
----
-
-## Build notes
-
-This repository contains two Android application variants sharing common logic.
-
-Typical requirements:
-
-- Android Studio
-- Gradle
-- DJI Mobile SDK V4 dependencies for the V4 app
-- DJI Mobile SDK V5 dependencies for the V5 app
-- proper DJI app key / SDK registration configuration
-- compatible Android device / smart controller
-- drone/controller supported by the corresponding SDK version
-
----
-
 ## Safety notes
 
 This project sends flight and gimbal commands to a real DJI system.
@@ -511,13 +251,22 @@ Use it carefully and always test in a safe environment before any real operation
 
 Recommended precautions:
 
-- test first with propellers removed whenever possible
-- verify command axis mapping before flight
-- verify watchdog zero-command behavior
-- keep a manual recovery procedure available at all times
-- in our tests, switching the controller to **S mode** interrupted PC-driven command input and the aircraft returned to a stable hover state
-- always validate this behavior on your own hardware and firmware before relying on it as a safety procedure
-  
+* test first with propellers removed whenever possible
+* verify command axis mapping before flight
+* verify watchdog zero-command behavior
+* keep a manual recovery procedure available at all times
+* in our tests, switching the controller to S mode interrupted PC-driven command input and the aircraft returned to a stable hover state
+* always validate this behavior on your own hardware and firmware before relying on it as a safety procedure
+
+---
+## Acknowledgment
+
+This repository was developed within the framework of the European Union SOLARIS project.
+
+The work was supported by the European Union under the SOLARIS project (grant agreement no. 101146377).
+
+More information is available on the [SOLARIS project website](https://solaris-heu.eu/).
+
 ---
 
 ## Author
