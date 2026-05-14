@@ -2,6 +2,7 @@ package com.rice.solarisbridge.v4.ui
 
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.os.Bundle
@@ -80,6 +81,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         renderUiState()
         maybeAttachPreview()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        renderUiState()
     }
 
     override fun onPause() {

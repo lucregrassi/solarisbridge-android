@@ -179,7 +179,7 @@ class CommandSystemController(
     }
 
     fun toggle() {
-        if (isRunning) stop(moveGimbalToNeutral = true) else start()
+        if (isRunning) stop(moveGimbalToNeutral = false) else start()
     }
 
     private fun loadPortsFromPrefs() {

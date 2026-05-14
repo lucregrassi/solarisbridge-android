@@ -207,7 +207,7 @@ class TelemetryController(
 
         try {
             val json = JSONObject()
-            json.put("ts", s.ts)
+            json.put("ts", System.currentTimeMillis())
             json.putNullable("lat", s.lat)
             json.putNullable("lon", s.lon)
             json.putNullable("ultrasonic_height", s.ultrasonicHeight)
