@@ -23,6 +23,13 @@
     <string name="last_command_placeholder">Last command: -</string>
     <string name="last_command_format">Last command: %1$s</string>
 
+    <string name="enable_obstacle_avoidance">Enable obstacle avoidance</string>
+    <string name="disable_obstacle_avoidance">Disable obstacle avoidance</string>
+    <string name="obstacle_avoidance_on">Obstacle avoidance: ON</string>
+    <string name="obstacle_avoidance_off">Obstacle avoidance: OFF</string>
+    <string name="obstacle_avoidance_unknown">Obstacle avoidance: unknown</string>
+    <string name="obstacle_avoidance_not_available">Obstacle avoidance not available</string>
+
     <string name="device_ip_placeholder">Device IP:</string>
     <string name="device_ip_format">Device IP: %1$s</string>
     <string name="not_available">not available</string>

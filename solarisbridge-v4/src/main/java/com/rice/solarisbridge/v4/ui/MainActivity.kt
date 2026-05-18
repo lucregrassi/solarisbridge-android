@@ -6,6 +6,8 @@ import android.content.res.Configuration
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -25,6 +27,9 @@ import com.rice.solarisbridge.v4.drone.control.CommandSystemController
 import com.rice.solarisbridge.v4.drone.control.GimbalController
 import com.rice.solarisbridge.v4.drone.telemetry.TelemetryController
 import com.rice.solarisbridge.v4.drone.telemetry.VideoStreamController
+import dji.common.error.DJIError
+import dji.common.util.CommonCallbacks
+import dji.sdk.flightcontroller.FlightAssistant
 import dji.sdk.products.Aircraft
 
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
@@ -44,6 +49,22 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var tvCmdLast: TextView
 
     private lateinit var tvSatelliteCount: TextView
+
+    private lateinit var btnObstacleAvoidance: MaterialButton
+    private lateinit var tvObstacleAvoidanceStatus: TextView
+
+    private var obstacleAvoidanceEnabled: Boolean? = null
+    private var obstacleAvoidanceRequestInProgress = false
+    private var obstacleAvoidanceRefreshInProgress = false
+
+    private val obstacleAvoidanceRefreshHandler = Handler(Looper.getMainLooper())
+
+    private val obstacleAvoidanceRefreshRunnable = object : Runnable {
+        override fun run() {
+            refreshObstacleAvoidanceState()
+            obstacleAvoidanceRefreshHandler.postDelayed(this, 3000L)
+        }
+    }
 
     private var previewAttached = false
 
@@ -80,6 +101,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         telemetryController.startMonitoring()
 
         renderUiState()
+        startObstacleAvoidanceAutoRefresh()
 
         videoTexture.post {
             maybeAttachPreview()
@@ -97,6 +119,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         telemetryController.startMonitoring()
 
         renderUiState()
+        startObstacleAvoidanceAutoRefresh()
 
         videoTexture.post {
             maybeAttachPreview()
@@ -107,6 +130,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         Log.i(TAG, "onPause isChangingConfigurations=$isChangingConfigurations")
 
         if (!isChangingConfigurations) {
+            stopObstacleAvoidanceAutoRefresh()
             commandSystemController.stop(moveGimbalToNeutral = false)
             videoStreamController.stop()
             telemetryController.stop()
@@ -120,6 +144,8 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         Log.i(TAG, "onDestroy isChangingConfigurations=$isChangingConfigurations")
 
         if (!isChangingConfigurations) {
+            stopObstacleAvoidanceAutoRefresh()
+
             if (::commandSystemController.isInitialized) {
                 commandSystemController.stop(moveGimbalToNeutral = false)
             }
@@ -165,6 +191,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         btnCmd = findViewById(R.id.btnCmd)
         tvCmdStatus = findViewById(R.id.tvCmdStatus)
         tvCmdLast = findViewById(R.id.tvCmdLast)
+
+        btnObstacleAvoidance = findViewById(R.id.btnObstacleAvoidance)
+        tvObstacleAvoidanceStatus = findViewById(R.id.tvObstacleAvoidanceStatus)
     }
 
     private fun buildControllers() {
@@ -175,9 +204,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             onSatelliteCountChanged = { count ->
                 runOnUiThread {
                     tvSatelliteCount.text = if (count != null) {
-                        getString(R.string.satellite_count_format, count)
+                        getString(R.string.status_satellites_format, count)
                     } else {
-                        getString(R.string.satellite_count_placeholder)
+                        getString(R.string.status_satellites_placeholder)
                     }
                 }
             }
@@ -226,6 +255,18 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
             commandSystemController.toggle()
             renderUiState()
+        }
+
+        btnObstacleAvoidance.setOnClickListener {
+            Log.i(
+                TAG,
+                "btnObstacleAvoidance click: enabled=$obstacleAvoidanceEnabled inProgress=$obstacleAvoidanceRequestInProgress"
+            )
+
+            if (!isDroneConnected()) return@setOnClickListener
+            if (obstacleAvoidanceRequestInProgress) return@setOnClickListener
+
+            toggleObstacleAvoidance()
         }
     }
 
@@ -383,21 +424,229 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             camera=${product?.camera}
             gimbal=${product?.gimbal}
             flightController=${aircraft?.flightController}
+            flightAssistant=${aircraft?.flightController?.flightAssistant}
             """.trimIndent()
         )
 
         if (product == null || !product.isConnected) {
             Log.w(TAG, "Controller/drone non connesso")
-            Toast.makeText(this, "Controller/drone non connesso", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                getString(R.string.toast_controller_drone_not_connected),
+                Toast.LENGTH_SHORT
+            ).show()
             return false
         }
 
         return true
     }
 
+    private fun flightAssistant(): FlightAssistant? {
+        val aircraft = BridgeBootstrapV4.getProductInstance() as? Aircraft
+        return aircraft?.flightController?.flightAssistant
+    }
+
+    private fun startObstacleAvoidanceAutoRefresh() {
+        obstacleAvoidanceRefreshHandler.removeCallbacks(obstacleAvoidanceRefreshRunnable)
+        obstacleAvoidanceRefreshRunnable.run()
+    }
+
+    private fun stopObstacleAvoidanceAutoRefresh() {
+        obstacleAvoidanceRefreshHandler.removeCallbacks(obstacleAvoidanceRefreshRunnable)
+        obstacleAvoidanceRefreshInProgress = false
+    }
+
+    private fun refreshObstacleAvoidanceState() {
+        if (obstacleAvoidanceRequestInProgress) return
+        if (obstacleAvoidanceRefreshInProgress) return
+
+        val assistant = flightAssistant()
+
+        if (assistant == null) {
+            obstacleAvoidanceEnabled = null
+            renderObstacleAvoidanceState()
+            Log.w(TAG, "refreshObstacleAvoidanceState: FlightAssistant null")
+            return
+        }
+
+        obstacleAvoidanceRefreshInProgress = true
+
+        try {
+            assistant.getCollisionAvoidanceEnabled(
+                object : CommonCallbacks.CompletionCallbackWith<Boolean> {
+                    override fun onSuccess(enabled: Boolean?) {
+                        Log.i(TAG, "Obstacle avoidance state: $enabled")
+
+                        obstacleAvoidanceRefreshInProgress = false
+                        obstacleAvoidanceEnabled = enabled
+
+                        runOnUiThread {
+                            renderObstacleAvoidanceState()
+                        }
+                    }
+
+                    override fun onFailure(error: DJIError?) {
+                        Log.w(
+                            TAG,
+                            "getCollisionAvoidanceEnabled failed: ${error?.description}"
+                        )
+
+                        obstacleAvoidanceRefreshInProgress = false
+                        obstacleAvoidanceEnabled = null
+
+                        runOnUiThread {
+                            renderObstacleAvoidanceState()
+                        }
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "refreshObstacleAvoidanceState exception", t)
+
+            obstacleAvoidanceRefreshInProgress = false
+            obstacleAvoidanceEnabled = null
+
+            runOnUiThread {
+                renderObstacleAvoidanceState()
+            }
+        }
+    }
+
+    private fun toggleObstacleAvoidance() {
+        val current = obstacleAvoidanceEnabled ?: return
+        setObstacleAvoidanceEnabled(!current)
+    }
+
+    private fun setObstacleAvoidanceEnabled(enabled: Boolean) {
+        val assistant = flightAssistant()
+
+        if (assistant == null) {
+            obstacleAvoidanceEnabled = null
+            renderObstacleAvoidanceState()
+            Toast.makeText(
+                this,
+                getString(R.string.toast_obstacle_avoidance_not_available),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        obstacleAvoidanceRequestInProgress = true
+        renderObstacleAvoidanceState()
+
+        try {
+            assistant.setCollisionAvoidanceEnabled(
+                enabled,
+                object : CommonCallbacks.CompletionCallback<DJIError> {
+                    override fun onResult(error: DJIError?) {
+                        obstacleAvoidanceRequestInProgress = false
+
+                        if (error != null) {
+                            Log.w(
+                                TAG,
+                                "setCollisionAvoidanceEnabled($enabled) failed: ${error.description}"
+                            )
+
+                            runOnUiThread {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    getString(
+                                        R.string.toast_obstacle_avoidance_not_modified_format,
+                                        error.description
+                                    ),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
+                                refreshObstacleAvoidanceState()
+                            }
+
+                            return
+                        }
+
+                        obstacleAvoidanceEnabled = enabled
+
+                        Log.i(TAG, "Obstacle avoidance set to $enabled")
+
+                        runOnUiThread {
+                            renderObstacleAvoidanceState()
+
+                            Toast.makeText(
+                                this@MainActivity,
+                                if (enabled) {
+                                    getString(R.string.toast_obstacle_avoidance_enabled)
+                                } else {
+                                    getString(R.string.toast_obstacle_avoidance_disabled)
+                                },
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            obstacleAvoidanceRequestInProgress = false
+
+            Log.e(TAG, "setObstacleAvoidanceEnabled exception", t)
+
+            runOnUiThread {
+                renderObstacleAvoidanceState()
+                Toast.makeText(
+                    this,
+                    getString(R.string.toast_obstacle_avoidance_error),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun renderObstacleAvoidanceState() {
+        val green = ColorStateList.valueOf(getColor(R.color.state_green))
+        val red = ColorStateList.valueOf(getColor(R.color.state_red))
+        val gray = ColorStateList.valueOf(getColor(android.R.color.darker_gray))
+
+        if (obstacleAvoidanceRequestInProgress) {
+            btnObstacleAvoidance.isEnabled = false
+            btnObstacleAvoidance.text = getString(R.string.button_updating_obstacle_avoidance)
+            btnObstacleAvoidance.backgroundTintList = gray
+
+            tvObstacleAvoidanceStatus.text = getString(R.string.status_obstacle_avoidance_updating)
+            tvObstacleAvoidanceStatus.setTextColor(getColor(android.R.color.darker_gray))
+            return
+        }
+
+        when (obstacleAvoidanceEnabled) {
+            true -> {
+                btnObstacleAvoidance.isEnabled = true
+                btnObstacleAvoidance.text = getString(R.string.button_disable_obstacle_avoidance)
+                btnObstacleAvoidance.backgroundTintList = red
+
+                tvObstacleAvoidanceStatus.text = getString(R.string.status_obstacle_avoidance_on)
+                tvObstacleAvoidanceStatus.setTextColor(getColor(R.color.state_green))
+            }
+
+            false -> {
+                btnObstacleAvoidance.isEnabled = true
+                btnObstacleAvoidance.text = getString(R.string.button_enable_obstacle_avoidance)
+                btnObstacleAvoidance.backgroundTintList = green
+
+                tvObstacleAvoidanceStatus.text = getString(R.string.status_obstacle_avoidance_off)
+                tvObstacleAvoidanceStatus.setTextColor(getColor(R.color.state_red))
+            }
+
+            null -> {
+                btnObstacleAvoidance.isEnabled = false
+                btnObstacleAvoidance.text = getString(R.string.button_obstacle_avoidance_unavailable)
+                btnObstacleAvoidance.backgroundTintList = gray
+
+                tvObstacleAvoidanceStatus.text = getString(R.string.status_obstacle_avoidance_unknown)
+                tvObstacleAvoidanceStatus.setTextColor(getColor(android.R.color.darker_gray))
+            }
+        }
+    }
+
     private fun showCmdLine(line: String) {
         runOnUiThread {
-            tvCmdLast.text = getString(R.string.last_command_format, line)
+            tvCmdLast.text = getString(R.string.status_last_command_format, line)
         }
     }
 
@@ -406,30 +655,31 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         val red = ColorStateList.valueOf(getColor(R.color.state_red))
 
         if (videoStreamController.isRunning) {
-            btnVideo.text = getString(R.string.stop_video_stream)
+            btnVideo.text = getString(R.string.button_stop_video_stream)
             btnVideo.backgroundTintList = red
-            tvVideoStatus.text = getString(R.string.video_stream_on)
+            tvVideoStatus.text = getString(R.string.status_video_stream_on)
             tvVideoStatus.setTextColor(getColor(R.color.state_green))
         } else {
-            btnVideo.text = getString(R.string.start_video_stream)
+            btnVideo.text = getString(R.string.button_start_video_stream)
             btnVideo.backgroundTintList = green
-            tvVideoStatus.text = getString(R.string.video_stream_off)
+            tvVideoStatus.text = getString(R.string.status_video_stream_off)
             tvVideoStatus.setTextColor(getColor(R.color.state_red))
         }
 
         if (telemetryController.isRunning) {
-            btnTelemetry.text = getString(R.string.stop_telemetry_stream)
+            btnTelemetry.text = getString(R.string.button_stop_telemetry_stream)
             btnTelemetry.backgroundTintList = red
-            tvTelemetryStatus.text = getString(R.string.telemetry_stream_on)
+            tvTelemetryStatus.text = getString(R.string.status_telemetry_stream_on)
             tvTelemetryStatus.setTextColor(getColor(R.color.state_green))
         } else {
-            btnTelemetry.text = getString(R.string.start_telemetry_stream)
+            btnTelemetry.text = getString(R.string.button_start_telemetry_stream)
             btnTelemetry.backgroundTintList = green
-            tvTelemetryStatus.text = getString(R.string.telemetry_stream_off)
+            tvTelemetryStatus.text = getString(R.string.status_telemetry_stream_off)
             tvTelemetryStatus.setTextColor(getColor(R.color.state_red))
         }
 
         renderCmdUiState()
+        renderObstacleAvoidanceState()
     }
 
     private fun renderCmdUiState() {
@@ -437,14 +687,14 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         val red = ColorStateList.valueOf(getColor(R.color.state_red))
 
         if (commandSystemController.isRunning) {
-            btnCmd.text = getString(R.string.stop_command_receiver)
+            btnCmd.text = getString(R.string.button_stop_command_receiver)
             btnCmd.backgroundTintList = red
-            tvCmdStatus.text = getString(R.string.command_system_on)
+            tvCmdStatus.text = getString(R.string.status_command_system_on)
             tvCmdStatus.setTextColor(getColor(R.color.state_green))
         } else {
-            btnCmd.text = getString(R.string.start_command_receiver)
+            btnCmd.text = getString(R.string.button_start_command_receiver)
             btnCmd.backgroundTintList = green
-            tvCmdStatus.text = getString(R.string.command_system_off)
+            tvCmdStatus.text = getString(R.string.status_command_system_off)
             tvCmdStatus.setTextColor(getColor(R.color.state_red))
         }
     }

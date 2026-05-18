@@ -1,50 +1,80 @@
 <resources>
+    <!-- App -->
     <string name="app_name">Bridge V4</string>
+    <string name="title_home">Home</string>
+    <string name="title_settings">Settings</string>
 
-    <string name="home_title">Home</string>
-    <string name="settings_title">Settings</string>
-    <string name="communication_title">Communication</string>
+    <!-- Sections -->
+    <string name="section_communication">Communication</string>
+    <string name="section_drone_status">Drone status</string>
+    <string name="section_settings_drone_to_pc">Drone → PC</string>
+    <string name="section_settings_pc_to_drone">PC → Drone</string>
 
-    <string name="satellite_count_placeholder">Satellites: —</string>
-    <string name="satellite_count_format">Satellites: %1$d</string>
-    <string name="start_video_stream">Start video stream</string>
-    <string name="stop_video_stream">Stop video stream</string>
-    <string name="video_stream_on">Video stream: on</string>
-    <string name="video_stream_off">Video stream: off</string>
+    <!-- General labels -->
+    <string name="label_not_available">not available</string>
+    <string name="label_device_ip_placeholder">Device IP: —</string>
+    <string name="label_device_ip_format">Device IP: %1$s</string>
 
-    <string name="start_telemetry_stream">Start telemetry stream</string>
-    <string name="stop_telemetry_stream">Stop telemetry stream</string>
-    <string name="telemetry_stream_on">Telemetry stream: on</string>
-    <string name="telemetry_stream_off">Telemetry stream: off</string>
+    <!-- Satellite status -->
+    <string name="status_satellites_placeholder">Satellites: —</string>
+    <string name="status_satellites_format">Satellites: %1$d</string>
 
-    <string name="start_command_receiver">Start command receiver</string>
-    <string name="stop_command_receiver">Stop command receiver</string>
-    <string name="command_system_on">Command system: on</string>
-    <string name="command_system_off">Command system: off</string>
+    <!-- Video stream -->
+    <string name="button_start_video_stream">Start video stream</string>
+    <string name="button_stop_video_stream">Stop video stream</string>
+    <string name="status_video_stream_on">Video stream: ON</string>
+    <string name="status_video_stream_off">Video stream: OFF</string>
 
-    <string name="last_command_placeholder">Last command: —</string>
-    <string name="last_command_format">Last command: %1$s</string>
+    <!-- Telemetry stream -->
+    <string name="button_start_telemetry_stream">Start telemetry stream</string>
+    <string name="button_stop_telemetry_stream">Stop telemetry stream</string>
+    <string name="status_telemetry_stream_on">Telemetry stream: ON</string>
+    <string name="status_telemetry_stream_off">Telemetry stream: OFF</string>
 
-    <string name="device_ip_placeholder">Device IP:</string>
-    <string name="device_ip_format">Device IP: %1$s</string>
-    <string name="not_available">not available</string>
+    <!-- Command receiver -->
+    <string name="button_start_command_receiver">Start command receiver</string>
+    <string name="button_stop_command_receiver">Stop command receiver</string>
+    <string name="status_command_system_on">Command system: ON</string>
+    <string name="status_command_system_off">Command system: OFF</string>
+    <string name="status_last_command_placeholder">Last command: —</string>
+    <string name="status_last_command_format">Last command: %1$s</string>
 
-    <string name="computer_ip_hint">Computer IP</string>
-    <string name="drone_to_pc">Drone → PC</string>
-    <string name="pc_to_drone">PC → Drone</string>
-    <string name="telemetry_port_hint">Telemetry port (Drone → PC)</string>
-    <string name="video_port_hint">Video port (Drone → PC)</string>
-    <string name="flight_command_port_hint">Flight command port (PC → Drone)</string>
-    <string name="gimbal_command_port_hint">Gimbal command port (PC → Drone)</string>
-    <string name="save">Save</string>
+    <!-- Obstacle avoidance -->
+    <string name="button_check_obstacle_avoidance">Check obstacle avoidance</string>
+    <string name="button_enable_obstacle_avoidance">Enable obstacle avoidance</string>
+    <string name="button_disable_obstacle_avoidance">Disable obstacle avoidance</string>
+    <string name="button_updating_obstacle_avoidance">Obstacle avoidance...</string>
+    <string name="button_obstacle_avoidance_unavailable">Obstacle avoidance unavailable</string>
 
+    <string name="status_obstacle_avoidance_on">Obstacle avoidance: ON</string>
+    <string name="status_obstacle_avoidance_off">Obstacle avoidance: OFF</string>
+    <string name="status_obstacle_avoidance_unknown">Obstacle avoidance: unknown</string>
+    <string name="status_obstacle_avoidance_updating">Obstacle avoidance: updating</string>
+
+    <!-- Toasts -->
+    <string name="toast_controller_drone_not_connected">Controller/drone non connesso</string>
+    <string name="toast_obstacle_avoidance_state_unavailable">Stato obstacle avoidance non disponibile</string>
+    <string name="toast_obstacle_avoidance_not_available">Obstacle avoidance non disponibile su questo drone</string>
+    <string name="toast_obstacle_avoidance_not_modified_format">Obstacle avoidance non modificata: %1$s</string>
+    <string name="toast_obstacle_avoidance_enabled">Obstacle avoidance abilitata</string>
+    <string name="toast_obstacle_avoidance_disabled">Obstacle avoidance disabilitata</string>
+    <string name="toast_obstacle_avoidance_error">Errore obstacle avoidance</string>
+    <string name="status_configuration_saved">Configuration saved.</string>
+    <string name="status_configuration_required">Configuration required before proceeding</string>
+
+    <!-- Settings fields -->
+    <string name="hint_computer_ip">Computer IP</string>
+    <string name="hint_telemetry_port">Telemetry port (Drone → PC)</string>
+    <string name="hint_video_port">Video port (Drone → PC)</string>
+    <string name="hint_flight_command_port">Flight command port (PC → Drone)</string>
+    <string name="hint_gimbal_command_port">Gimbal command port (PC → Drone)</string>
+    <string name="button_save">Save</string>
+
+    <!-- Settings validation errors -->
     <string name="error_invalid_pc_ip">Invalid computer IP</string>
     <string name="error_invalid_telemetry_port">Invalid telemetry port</string>
     <string name="error_invalid_video_port">Invalid video port</string>
-    <string name="error_invalid_flight_cmd_port">Invalid flight command port</string>
-    <string name="error_invalid_gimbal_cmd_port">Invalid gimbal command port</string>
+    <string name="error_invalid_flight_command_port">Invalid flight command port</string>
+    <string name="error_invalid_gimbal_command_port">Invalid gimbal command port</string>
     <string name="error_ports_must_be_different">All ports must be different</string>
-
-    <string name="configuration_saved">Configuration saved.</string>
-    <string name="configuration_required_before_proceeding">Configuration required before proceeding</string>
 </resources>
