@@ -17,8 +17,9 @@ import kotlin.concurrent.fixedRateTimer
 
 class TelemetryController(
     private val context: Context,
-    private val tag: String = "TelemetryControllerV4"
-){
+    private val tag: String = "TelemetryControllerV4",
+    private val onSatelliteCountChanged: (Int?) -> Unit = {}
+) {
 
     data class Snapshot(
         val ts: Long = System.currentTimeMillis(),
@@ -35,6 +36,7 @@ class TelemetryController(
         val homeLat: Double? = null,
         val homeLon: Double? = null,
         val compassHeading: Double? = null,
+        val satelliteCount: Int? = null,
     )
 
     private var telemetryTimer: Timer? = null
@@ -42,14 +44,21 @@ class TelemetryController(
     private var addr: InetAddress? = null
     private var telemetryTxPort: Int = 0
 
+    private var callbacksBound = false
+
     private val snapshot = AtomicReference(Snapshot())
+
+    private var monitoringRetryTimer: Timer? = null
 
     var isRunning: Boolean = false
         private set
 
     fun rebuildFromPrefs() {
         val wasRunning = isRunning
-        if (wasRunning) stop()
+
+        if (wasRunning) {
+            stop()
+        }
 
         val ip = AppPrefs.getPcIp(context)
         telemetryTxPort = AppPrefs.getTelemetryTxPort(context)
@@ -65,7 +74,55 @@ class TelemetryController(
             addr = null
         }
 
-        if (wasRunning) start()
+        if (wasRunning) {
+            start()
+        }
+    }
+
+    fun startMonitoring() {
+        if (callbacksBound) return
+        if (monitoringRetryTimer != null) return
+
+        monitoringRetryTimer = fixedRateTimer(
+            name = "telemetry-monitoring-v4",
+            daemon = true,
+            initialDelay = 0L,
+            period = 1000L
+        ) {
+            val aircraft = BridgeBootstrapV4.getProductInstance() as? Aircraft
+
+            if (aircraft == null || !aircraft.isConnected) {
+                Log.w(tag, "startMonitoring retry: Aircraft not ready")
+                onSatelliteCountChanged(null)
+                return@fixedRateTimer
+            }
+
+            val bound = bindSdkCallbacks()
+
+            if (bound) {
+                callbacksBound = true
+
+                monitoringRetryTimer?.cancel()
+                monitoringRetryTimer = null
+
+                Log.i(tag, "Telemetry monitoring STARTED")
+            } else {
+                callbacksBound = false
+                Log.w(tag, "startMonitoring retry: callbacks not bound yet")
+                onSatelliteCountChanged(null)
+            }
+        }
+    }
+
+    fun stopMonitoring() {
+        monitoringRetryTimer?.cancel()
+        monitoringRetryTimer = null
+
+        if (callbacksBound) {
+            unbindSdkCallbacks()
+            callbacksBound = false
+            Log.i(tag, "Telemetry monitoring STOPPED")
+        }
     }
 
     fun start() {
@@ -83,7 +140,7 @@ class TelemetryController(
             return
         }
 
-        bindSdkCallbacks()
+        startMonitoring()
 
         telemetryTimer = fixedRateTimer(
             name = "telemetry-v4",
@@ -104,46 +161,80 @@ class TelemetryController(
         telemetryTimer?.cancel()
         telemetryTimer = null
 
-        unbindSdkCallbacks()
-
         try {
             socket?.close()
         } catch (_: Throwable) {
         }
-        socket = null
 
+        socket = null
         isRunning = false
+
         Log.i(tag, "Telemetry stream STOPPED")
     }
 
     fun toggle() {
-        if (isRunning) stop() else start()
+        if (isRunning) {
+            stop()
+        } else {
+            start()
+        }
     }
 
-    private fun bindSdkCallbacks() {
+    private fun bindSdkCallbacks(): Boolean {
         val aircraft = BridgeBootstrapV4.getProductInstance() as? Aircraft ?: run {
-            Log.w(tag, "Aircraft null")
-            return
+            Log.w(tag, "bindSdkCallbacks: Aircraft null")
+            return false
         }
 
-        aircraft.flightController?.setStateCallback { state ->
-            updateFromFlightState(state)
+        if (!aircraft.isConnected) {
+            Log.w(tag, "bindSdkCallbacks: Aircraft not connected")
+            return false
         }
 
-        aircraft.battery?.setStateCallback { state ->
-            updateFromBatteryState(state)
+        val flightController = aircraft.flightController
+        if (flightController == null) {
+            Log.w(tag, "bindSdkCallbacks: FlightController null")
+            return false
         }
+
+        Log.i(
+            tag,
+            "bindSdkCallbacks: aircraft=$aircraft connected=${aircraft.isConnected} fc=$flightController battery=${aircraft.battery}"
+        )
+
+        try {
+            flightController.setStateCallback { state ->
+                updateFromFlightState(state)
+            }
+        } catch (t: Throwable) {
+            Log.e(tag, "bindSdkCallbacks: failed to set flight controller callback", t)
+            return false
+        }
+
+        try {
+            aircraft.battery?.setStateCallback { state ->
+                updateFromBatteryState(state)
+            }
+        } catch (t: Throwable) {
+            Log.w(tag, "bindSdkCallbacks: failed to set battery callback", t)
+        }
+
+        return true
     }
 
     private fun unbindSdkCallbacks() {
         val aircraft = BridgeBootstrapV4.getProductInstance() as? Aircraft ?: return
+
         try {
             aircraft.flightController?.setStateCallback(null)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.w(tag, "Failed to clear flight controller callback", t)
         }
+
         try {
             aircraft.battery?.setStateCallback(null)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.w(tag, "Failed to clear battery callback", t)
         }
     }
 
@@ -158,12 +249,38 @@ class TelemetryController(
             null
         }
 
+        val rawSatellites = try {
+            state.satelliteCount
+        } catch (_: Throwable) {
+            null
+        }
+
+        val lat = state.aircraftLocation?.latitude
+        val lon = state.aircraftLocation?.longitude
+
+        val hasValidLocation =
+            lat != null &&
+                    lon != null &&
+                    lat != 0.0 &&
+                    lon != 0.0 &&
+                    !lat.isNaN() &&
+                    !lon.isNaN()
+
+        val satellites = if (rawSatellites != null && rawSatellites > 0) {
+            rawSatellites
+        } else if (hasValidLocation) {
+            rawSatellites
+        } else {
+            null
+        }
+
         val old = snapshot.get()
+
         snapshot.set(
             old.copy(
                 ts = System.currentTimeMillis(),
-                lat = state.aircraftLocation?.latitude,
-                lon = state.aircraftLocation?.longitude,
+                lat = lat,
+                lon = lon,
                 ultrasonicHeight = state.ultrasonicHeightInMeters.toDouble(),
                 velX = state.velocityX.toDouble(),
                 velY = state.velocityY.toDouble(),
@@ -171,13 +288,17 @@ class TelemetryController(
                 roll = state.attitude?.roll,
                 pitch = state.attitude?.pitch,
                 yaw = state.attitude?.yaw,
-                compassHeading = compassHeading
+                compassHeading = compassHeading,
+                satelliteCount = satellites
             )
         )
+
+        onSatelliteCountChanged(satellites)
     }
 
     private fun updateFromBatteryState(state: BatteryState) {
         val old = snapshot.get()
+
         snapshot.set(
             old.copy(
                 ts = System.currentTimeMillis(),
@@ -189,14 +310,23 @@ class TelemetryController(
     private fun JSONObject.putNullable(key: String, value: Any?) {
         when (value) {
             null -> put(key, JSONObject.NULL)
+
             is Double -> {
-                if (value.isNaN() || value.isInfinite()) put(key, JSONObject.NULL)
-                else put(key, value)
+                if (value.isNaN() || value.isInfinite()) {
+                    put(key, JSONObject.NULL)
+                } else {
+                    put(key, value)
+                }
             }
+
             is Float -> {
-                if (value.isNaN() || value.isInfinite()) put(key, JSONObject.NULL)
-                else put(key, value)
+                if (value.isNaN() || value.isInfinite()) {
+                    put(key, JSONObject.NULL)
+                } else {
+                    put(key, value)
+                }
             }
+
             else -> put(key, value)
         }
     }
@@ -206,8 +336,12 @@ class TelemetryController(
         val target = addr ?: return
 
         try {
+            val now = System.currentTimeMillis()
+
             val json = JSONObject()
-            json.put("ts", s.ts)
+            json.put("ts", now)
+            json.put("data_ts", s.ts)
+
             json.putNullable("lat", s.lat)
             json.putNullable("lon", s.lon)
             json.putNullable("ultrasonic_height", s.ultrasonicHeight)
@@ -221,9 +355,11 @@ class TelemetryController(
             json.putNullable("home_lat", s.homeLat)
             json.putNullable("home_lon", s.homeLon)
             json.putNullable("compass_heading", s.compassHeading)
+            json.putNullable("satellite_count", s.satelliteCount)
 
             val payload = json.toString().toByteArray(Charsets.UTF_8)
             val pkt = DatagramPacket(payload, payload.size, target, telemetryTxPort)
+
             sock.send(pkt)
         } catch (t: Throwable) {
             Log.w(tag, "Failed to send telemetry packet", t)

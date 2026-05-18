@@ -5,6 +5,8 @@
     <string name="settings_title">Settings</string>
     <string name="communication_title">Communication</string>
 
+    <string name="satellite_count_placeholder">Satellites: —</string>
+    <string name="satellite_count_format">Satellites: %1$d</string>
     <string name="start_video_stream">Start video stream</string>
     <string name="stop_video_stream">Stop video stream</string>
     <string name="video_stream_on">Video stream: on</string>
@@ -20,7 +22,7 @@
     <string name="command_system_on">Command system: on</string>
     <string name="command_system_off">Command system: off</string>
 
-    <string name="last_command_placeholder">Last command: -</string>
+    <string name="last_command_placeholder">Last command: —</string>
     <string name="last_command_format">Last command: %1$s</string>
 
     <string name="device_ip_placeholder">Device IP:</string>

@@ -142,7 +142,7 @@ class CommandSystemController(
         })
     }
 
-    fun stop(moveGimbalToNeutral: Boolean) {
+    fun stop(moveGimbalToNeutral: Boolean = false) {
         if (!isRunning) return
 
         val fc = flightController()
@@ -179,7 +179,7 @@ class CommandSystemController(
     }
 
     fun toggle() {
-        if (isRunning) stop(moveGimbalToNeutral = true) else start()
+        if (isRunning) stop() else start()
     }
 
     private fun loadPortsFromPrefs() {
