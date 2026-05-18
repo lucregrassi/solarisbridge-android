@@ -3,7 +3,7 @@ package com.rice.solarisbridge.v4.drone.telemetry
 import android.content.Context
 import android.util.Log
 import com.rice.solarisbridge.common.prefs.AppPrefs
-import com.rice.solarisbridge.v4.app.BridgeAppV4
+import com.rice.solarisbridge.v4.app.BridgeBootstrapV4
 import dji.common.battery.BatteryState
 import dji.common.flightcontroller.FlightControllerState
 import dji.sdk.products.Aircraft
@@ -121,7 +121,7 @@ class TelemetryController(
     }
 
     private fun bindSdkCallbacks() {
-        val aircraft = BridgeAppV4.getProductInstance() as? Aircraft ?: run {
+        val aircraft = BridgeBootstrapV4.getProductInstance() as? Aircraft ?: run {
             Log.w(tag, "Aircraft null")
             return
         }
@@ -136,7 +136,7 @@ class TelemetryController(
     }
 
     private fun unbindSdkCallbacks() {
-        val aircraft = BridgeAppV4.getProductInstance() as? Aircraft ?: return
+        val aircraft = BridgeBootstrapV4.getProductInstance() as? Aircraft ?: return
         try {
             aircraft.flightController?.setStateCallback(null)
         } catch (_: Throwable) {
@@ -149,7 +149,7 @@ class TelemetryController(
 
     private fun updateFromFlightState(state: FlightControllerState) {
         val compassHeading = try {
-            (BridgeAppV4.getProductInstance() as? Aircraft)
+            (BridgeBootstrapV4.getProductInstance() as? Aircraft)
                 ?.flightController
                 ?.compass
                 ?.heading

@@ -2,7 +2,7 @@ package com.rice.solarisbridge.v4.drone.control
 
 import android.util.Log
 import com.rice.solarisbridge.common.commands.model.GimbalCmd
-import com.rice.solarisbridge.v4.app.BridgeAppV4
+import com.rice.solarisbridge.v4.app.BridgeBootstrapV4
 import dji.common.error.DJIError
 import dji.common.gimbal.Rotation
 import dji.common.gimbal.RotationMode
@@ -36,7 +36,7 @@ class GimbalController(
         rollDeg: Double,
         durationSec: Double
     ) {
-        val gimbal = BridgeAppV4.getProductInstance()?.gimbal ?: run {
+        val gimbal = BridgeBootstrapV4.getProductInstance()?.gimbal ?: run {
             Log.w(tag, "Gimbal null")
             return
         }

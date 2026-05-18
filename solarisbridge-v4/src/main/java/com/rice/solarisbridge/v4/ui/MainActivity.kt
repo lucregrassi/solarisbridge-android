@@ -9,7 +9,6 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.TextureView
-import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -17,15 +16,16 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v4.R
-import com.rice.solarisbridge.v4.app.BridgeAppV4
+import com.rice.solarisbridge.v4.app.BridgeBootstrapV4
 import com.rice.solarisbridge.v4.drone.control.CommandSystemController
 import com.rice.solarisbridge.v4.drone.control.GimbalController
 import com.rice.solarisbridge.v4.drone.telemetry.TelemetryController
 import com.rice.solarisbridge.v4.drone.telemetry.VideoStreamController
+import dji.sdk.products.Aircraft
 
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
-    private val tag = "MainActivityV4"
+    private val TAG = "MainActivityV4"
 
     private lateinit var videoTexture: TextureView
     private lateinit var btnVideo: MaterialButton
@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var commandSystemController: CommandSystemController
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        Log.i(tag, "onCreate")
+        Log.i(TAG, "onCreate")
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onResume() {
-        Log.i(tag, "onResume")
+        Log.i(TAG, "onResume")
         super.onResume()
 
         videoStreamController.rebuildFromPrefs()
@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onPause() {
-        Log.i(tag, "onPause")
+        Log.i(TAG, "onPause")
         commandSystemController.stop(moveGimbalToNeutral = false)
         videoStreamController.stop()
         telemetryController.stop()
@@ -92,7 +92,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onDestroy() {
-        Log.i(tag, "onDestroy")
+        Log.i(TAG, "onDestroy")
 
         if (::commandSystemController.isInitialized) {
             commandSystemController.stop(moveGimbalToNeutral = false)
@@ -137,36 +137,53 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         videoTexture.surfaceTextureListener = this
 
         btnVideo.setOnClickListener {
-            Log.i(tag, "btnVideo click: previewAttached=$previewAttached running=${videoStreamController.isRunning}")
+            Log.i(TAG, "btnVideo click: previewAttached=$previewAttached running=${videoStreamController.isRunning}")
             if (!isDroneConnected()) return@setOnClickListener
             videoStreamController.toggle(previewAttached)
             renderUiState()
         }
 
         btnTelemetry.setOnClickListener {
-            Log.i(tag, "btnTelemetry click: running=${telemetryController.isRunning}")
+            Log.i(TAG, "btnTelemetry click: running=${telemetryController.isRunning}")
             if (!isDroneConnected()) return@setOnClickListener
             telemetryController.toggle()
             renderUiState()
         }
 
         btnCmd.setOnClickListener {
-            Log.i(tag, "btnCmd click: running=${commandSystemController.isRunning}")
+            Log.i(TAG, "btnCmd click: running=${commandSystemController.isRunning}")
             if (!isDroneConnected()) return@setOnClickListener
             commandSystemController.toggle()
             renderUiState()
         }
     }
 
-    private fun isDroneConnected(showToast: Boolean = true): Boolean {
-        val connected = BridgeAppV4.getProductInstance() != null
-        if (!connected) {
-            Log.w(tag, "Controller/drone non connesso")
-            if (showToast) {
-                Toast.makeText(this, "Controller o drone non connesso", Toast.LENGTH_SHORT).show()
-            }
+    private fun isDroneConnected(): Boolean {
+        val product = BridgeBootstrapV4.getProductInstance()
+        val aircraft = product as? Aircraft
+
+        Log.i(
+            TAG,
+            """
+        isDroneConnected:
+        sdkRegistered=${BridgeBootstrapV4.isSdkRegistered()}
+        product=$product
+        productConnected=${product?.isConnected}
+        model=${product?.model}
+        isAircraft=${aircraft != null}
+        camera=${product?.camera}
+        gimbal=${product?.gimbal}
+        flightController=${aircraft?.flightController}
+        """.trimIndent()
+        )
+
+        if (product == null || !product.isConnected) {
+            Log.w(TAG, "Controller/drone non connesso")
+            Toast.makeText(this, "Controller/drone non connesso", Toast.LENGTH_SHORT).show()
+            return false
         }
-        return connected
+
+        return true
     }
 
     private fun showCmdLine(line: String) {
@@ -224,20 +241,20 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-        Log.i(tag, "onSurfaceTextureAvailable: ${w}x$h")
+        Log.i(TAG, "onSurfaceTextureAvailable: ${w}x$h")
         videoStreamController.onSurfaceAvailable(st, w, h)
         attachPreview(w, h)
     }
 
     override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {
-        Log.i(tag, "onSurfaceTextureSizeChanged: ${w}x$h")
+        Log.i(TAG, "onSurfaceTextureSizeChanged: ${w}x$h")
         detachPreview()
         videoStreamController.onSurfaceSizeChanged(st, w, h)
         attachPreview(w, h)
     }
 
     override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-        Log.i(tag, "onSurfaceTextureDestroyed")
+        Log.i(TAG, "onSurfaceTextureDestroyed")
         detachPreview()
         videoStreamController.onSurfaceDestroyed()
         return true
@@ -247,7 +264,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
     private fun maybeAttachPreview() {
         Log.i(
-            tag,
+            TAG,
             "maybeAttachPreview: texture=${videoTexture.width}x${videoTexture.height}, " +
                     "surfaceTexture=${videoTexture.surfaceTexture != null}, previewAttached=$previewAttached"
         )
@@ -283,32 +300,32 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     private fun attachPreview(w: Int, h: Int) {
-        Log.i(tag, "attachPreview chiamata: w=$w h=$h previewAttached=$previewAttached")
+        Log.i(TAG, "attachPreview chiamata: w=$w h=$h previewAttached=$previewAttached")
 
         if (previewAttached) {
-            Log.i(tag, "attachPreview: preview gia attaccata, skip")
+            Log.i(TAG, "attachPreview: preview gia attaccata, skip")
             return
         }
 
         if (w <= 0 || h <= 0) {
-            Log.w(tag, "attachPreview: dimensioni non valide ${w}x$h")
+            Log.w(TAG, "attachPreview: dimensioni non valide ${w}x$h")
             return
         }
 
         previewAttached = true
-        Log.i(tag, "Preview ATTACCATA: size=${w}x$h")
+        Log.i(TAG, "Preview ATTACCATA: size=${w}x$h")
     }
 
     private fun detachPreview() {
-        Log.i(tag, "detachPreview chiamata: previewAttached=$previewAttached")
+        Log.i(TAG, "detachPreview chiamata: previewAttached=$previewAttached")
 
         if (!previewAttached) {
-            Log.i(tag, "detachPreview: preview non attaccata, skip")
+            Log.i(TAG, "detachPreview: preview non attaccata, skip")
             return
         }
 
         previewAttached = false
-        Log.i(tag, "Preview STACCATA")
+        Log.i(TAG, "Preview STACCATA")
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

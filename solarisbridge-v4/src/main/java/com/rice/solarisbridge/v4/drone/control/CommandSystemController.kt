@@ -10,7 +10,7 @@ import com.rice.solarisbridge.common.commands.model.DroneCmd
 import com.rice.solarisbridge.common.commands.parser.CommandParsers
 import com.rice.solarisbridge.common.network.UdpJsonReceiver
 import com.rice.solarisbridge.common.prefs.AppPrefs
-import com.rice.solarisbridge.v4.app.BridgeAppV4
+import com.rice.solarisbridge.v4.app.BridgeBootstrapV4
 import dji.common.error.DJIError
 import dji.common.flightcontroller.virtualstick.FlightCoordinateSystem
 import dji.common.flightcontroller.virtualstick.FlightControlData
@@ -259,7 +259,7 @@ class CommandSystemController(
     }
 
     private fun flightController(): FlightController? {
-        val product = BridgeAppV4.getProductInstance() as? Aircraft ?: return null
+        val product = BridgeBootstrapV4.getProductInstance() as? Aircraft ?: return null
         return product.flightController
     }
 
