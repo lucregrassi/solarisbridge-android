@@ -48,7 +48,7 @@ Main workflow:
 - flight control through V4 Virtual Stick
 - **autonomous GPS navigation through V4 Waypoint Missions** (go-to a lat/lon target)
 - gimbal control through V4 gimbal APIs
-- video streaming to PC using **JPEG frames captured from the Android preview**
+- video streaming to PC using the **raw H.264 stream forwarded from the DJI video feed**
 
 ### `v5`
 Implementation based on DJI Mobile SDK V5.
@@ -215,30 +215,29 @@ autonomous repositioning and manual (visual-servoing) control.
 Video handling differs between V4 and V5.
 
 ### V4
-V4 shows the local preview through `VideoFeeder` and `DJICodecManager`, rendering it inside a `TextureView`.
+V4 registers a single `VideoFeeder.VideoDataListener` on the DJI video feed. Inside it the app
+both forwards the **raw H.264** bytes to the PC through `EncodedVideoStreamer` and feeds
+`DJICodecManager` to keep the local preview visible inside a `TextureView`.
 
-In the final implementation, video is sent to the PC by capturing the rendered preview and forwarding it as JPEG frames through `JpegFrameStreamer`.
+For multi-lens aircraft (e.g. Mavic 2 Enterprise Dual / M300), the primary feed does not deliver
+data to listeners, so the app selects the transcoded feed at start, mirroring the official DJI
+`VideoStreamDecoding` sample.
 
 Current characteristics:
 
-- source: rendered preview from `TextureView`
+- source: raw H.264 elementary stream from the DJI video feed (no JPEG re-encode)
 - protocol: TCP
 - default port: `6001`
-- default JPEG FPS: `8`
-- default JPEG quality: `70`
 
 Packet format:
 
 - 4-byte magic: `VSTR`
-- 1-byte packet type
 - 4-byte payload length
-- JPEG payload
+- raw encoded frame payload
 
-JPEG packet type:
-
-- `2`
-
-This solution is stable and keeps the local preview visible, but it introduces more latency.
+This is the lower-latency solution. The previous JPEG approach (`JpegFrameStreamer`, with a 1-byte
+packet type) has been replaced; on the PC side use `receive_h264_v4.py` rather than the legacy
+`receive_jpeg_v4.py`.
 
 ### V5
 V5 attaches preview directly through `MediaDataCenter.getInstance().cameraStreamManager` and an Android `Surface`.
