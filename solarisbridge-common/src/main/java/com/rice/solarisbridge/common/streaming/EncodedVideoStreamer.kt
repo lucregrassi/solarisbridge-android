@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class EncodedVideoStreamer(
     private val host: String,
     private val port: Int,
-    private val maxQueuedFrames: Int = 60,
+    private val maxQueuedFrames: Int = 12,
     private val connectTimeoutMs: Int = 3000,
     private val tag: String = "EncodedVideoStreamer"
 ) {
