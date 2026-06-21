@@ -235,9 +235,8 @@ Packet format:
 - 4-byte payload length
 - raw encoded frame payload
 
-This is the lower-latency solution. The previous JPEG approach (`JpegFrameStreamer`, with a 1-byte
-packet type) has been replaced; on the PC side use `receive_h264_v4.py` rather than the legacy
-`receive_jpeg_v4.py`.
+This is the lower-latency solution that replaced the previous JPEG approach (`JpegFrameStreamer`,
+which used a 1-byte packet type). On the PC side use `receive_h264_v4.py`.
 
 ### V5
 V5 attaches preview directly through `MediaDataCenter.getInstance().cameraStreamManager` and an Android `Surface`.
