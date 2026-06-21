@@ -8,6 +8,10 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Sends telemetry snapshots to the PC as UDP JSON packets (fire-and-forget).
+ * One datagram per snapshot; failures are logged and ignored (telemetry is best-effort).
+ */
 class TelemetryStreamer(private val ip: String, private val port: Int) {
     private val TAG = "TelemetryStreamer"
     private var socket: DatagramSocket? = null

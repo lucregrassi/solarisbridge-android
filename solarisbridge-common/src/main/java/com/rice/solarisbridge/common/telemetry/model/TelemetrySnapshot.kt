@@ -1,5 +1,6 @@
 package com.rice.solarisbridge.common.telemetry.model
 
+/** Immutable snapshot of the aircraft state shared between modules. All fields nullable until known. */
 data class TelemetrySnapshot(
     val ts: Long = System.currentTimeMillis(),
     val lat: Double? = null,

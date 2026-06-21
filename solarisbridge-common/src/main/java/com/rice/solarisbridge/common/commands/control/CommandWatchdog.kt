@@ -5,6 +5,11 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 
+/**
+ * Periodic safety watchdog for streamed commands. Every [tickMs] it checks how long ago the last
+ * command arrived ([lastCmdRxMs], updated by the receiver); if that exceeds [timeoutMs] it fires
+ * [onFailSafe] once (e.g. send a zero command) and disarms until the next command is received.
+ */
 class CommandWatchdog(
     private val tag: String = "CommandWatchdog",
     private val tickMs: Long = 50L,

@@ -11,6 +11,10 @@ import dji.sdk.base.BaseProduct
 import dji.sdk.sdkmanager.DJISDKInitEvent
 import dji.sdk.sdkmanager.DJISDKManager
 
+/**
+ * Application entry point for the V4 app. Installs the DJI helper, registers the Mobile SDK V4
+ * and starts the product connection. Exposes the connected product/aircraft via static helpers.
+ */
 class BridgeBootstrapV4 : Application() {
 
     companion object {

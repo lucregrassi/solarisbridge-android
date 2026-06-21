@@ -7,6 +7,7 @@ import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v4.ui.MainActivity
 import com.rice.solarisbridge.v4.ui.SettingsActivity
 
+/** Entry activity: routes to SettingsActivity if the PC IP is missing, otherwise to MainActivity. */
 class LauncherActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -7,6 +7,10 @@ import dji.common.util.CommonCallbacks
 import dji.sdk.flightcontroller.FlightAssistant
 import dji.sdk.products.Aircraft
 
+/**
+ * Reads and toggles the aircraft collision-avoidance setting via the V4 FlightAssistant.
+ * State is cached in [isEnabled] (null = unknown/unavailable) and pushed through [onStateChanged].
+ */
 class ObstacleAvoidanceController(
     private val tag: String = "ObstacleAvoidanceV4",
     private val onStateChanged: (Boolean?) -> Unit = {},

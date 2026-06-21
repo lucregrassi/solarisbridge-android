@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v4.app.BridgeBootstrapV4
+import com.rice.solarisbridge.v4.drone.control.WaypointMissionController
 import dji.common.battery.BatteryState
 import dji.common.flightcontroller.FlightControllerState
 import dji.sdk.products.Aircraft
@@ -15,6 +16,11 @@ import java.util.Timer
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.fixedRateTimer
 
+/**
+ * Collects aircraft state via V4 flight-controller/battery callbacks into an atomic [Snapshot],
+ * and streams it to the PC as UDP JSON every 100 ms. Also exposes helpers used by the autonomous
+ * navigation: current position for the mission, satellite count, isFlying, and the goto_state field.
+ */
 class TelemetryController(
     private val context: Context,
     private val tag: String = "TelemetryControllerV4",
@@ -26,6 +32,7 @@ class TelemetryController(
         val lat: Double? = null,
         val lon: Double? = null,
         val ultrasonicHeight: Double? = null,
+        val altRelTakeoff: Double? = null,   // altitude relative to takeoff point (waypoint reference)
         val velX: Double? = null,
         val velY: Double? = null,
         val velZ: Double? = null,
@@ -37,6 +44,7 @@ class TelemetryController(
         val homeLon: Double? = null,
         val compassHeading: Double? = null,
         val satelliteCount: Int? = null,
+        val isFlying: Boolean? = null,
     )
 
     private var telemetryTimer: Timer? = null
@@ -47,6 +55,37 @@ class TelemetryController(
     private var callbacksBound = false
 
     private val snapshot = AtomicReference(Snapshot())
+
+    // Autonomous-navigation state, forwarded to the PC in the telemetry JSON.
+    // Values: "idle" / "enroute" / "arrived" / "failed". Written by the ControlCoordinator.
+    @Volatile
+    private var gotoState: String = "idle"
+
+    fun setGotoState(value: String) {
+        gotoState = value
+    }
+
+    /**
+     * Current position used to build waypoint 1 of the mission.
+     * Returns null if lat/lon/altitude are not available yet.
+     */
+    fun currentPositionForMission(): WaypointMissionController.CurrentPosition? {
+        val s = snapshot.get()
+        val lat = s.lat
+        val lon = s.lon
+        val alt = s.altRelTakeoff
+        return if (lat != null && lon != null && alt != null) {
+            WaypointMissionController.CurrentPosition(lat, lon, alt.toFloat())
+        } else {
+            null
+        }
+    }
+
+    /** Satellite count from the latest snapshot (null if unavailable). */
+    fun latestSatelliteCount(): Int? = snapshot.get().satelliteCount
+
+    /** true if the aircraft is reported airborne in the latest snapshot. */
+    fun isFlying(): Boolean = snapshot.get().isFlying == true
 
     private var monitoringRetryTimer: Timer? = null
 
@@ -282,6 +321,7 @@ class TelemetryController(
                 lat = lat,
                 lon = lon,
                 ultrasonicHeight = state.ultrasonicHeightInMeters.toDouble(),
+                altRelTakeoff = try { state.aircraftLocation?.altitude?.toDouble() } catch (_: Throwable) { null },
                 velX = state.velocityX.toDouble(),
                 velY = state.velocityY.toDouble(),
                 velZ = state.velocityZ.toDouble(),
@@ -289,7 +329,8 @@ class TelemetryController(
                 pitch = state.attitude?.pitch,
                 yaw = state.attitude?.yaw,
                 compassHeading = compassHeading,
-                satelliteCount = satellites
+                satelliteCount = satellites,
+                isFlying = try { state.isFlying } catch (_: Throwable) { null }
             )
         )
 
@@ -345,6 +386,7 @@ class TelemetryController(
             json.putNullable("lat", s.lat)
             json.putNullable("lon", s.lon)
             json.putNullable("ultrasonic_height", s.ultrasonicHeight)
+            json.putNullable("altitude_rel_takeoff", s.altRelTakeoff)
             json.putNullable("vel_x", s.velX)
             json.putNullable("vel_y", s.velY)
             json.putNullable("vel_z", s.velZ)
@@ -356,6 +398,8 @@ class TelemetryController(
             json.putNullable("home_lon", s.homeLon)
             json.putNullable("compass_heading", s.compassHeading)
             json.putNullable("satellite_count", s.satelliteCount)
+            json.putNullable("is_flying", s.isFlying)
+            json.put("goto_state", gotoState)
 
             val payload = json.toString().toByteArray(Charsets.UTF_8)
             val pkt = DatagramPacket(payload, payload.size, target, telemetryTxPort)

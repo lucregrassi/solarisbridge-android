@@ -13,6 +13,10 @@ import com.rice.solarisbridge.common.network.NetUtils
 import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v4.R
 
+/**
+ * Network configuration screen: PC IP and the telemetry/video/flight/gimbal/waypoint ports.
+ * Validates IPv4 format, port range and port uniqueness before persisting through AppPrefs.
+ */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var tvDeviceIp: TextView
@@ -21,6 +25,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var etVideoTxPort: EditText
     private lateinit var etFlightCmdRxPort: EditText
     private lateinit var etGimbalCmdRxPort: EditText
+    private lateinit var etWaypointCmdRxPort: EditText
     private lateinit var btnSave: Button
     private lateinit var tvStatus: TextView
 
@@ -44,6 +49,7 @@ class SettingsActivity : AppCompatActivity() {
         etVideoTxPort = findViewById(R.id.etVideoTxPort)
         etFlightCmdRxPort = findViewById(R.id.etFlightCmdRxPort)
         etGimbalCmdRxPort = findViewById(R.id.etGimbalCmdRxPort)
+        etWaypointCmdRxPort = findViewById(R.id.etWaypointCmdRxPort)
         btnSave = findViewById(R.id.btnSave)
         tvStatus = findViewById(R.id.tvStatus)
     }
@@ -63,6 +69,7 @@ class SettingsActivity : AppCompatActivity() {
         etVideoTxPort.setText(AppPrefs.getVideoTxPort(this).toString())
         etFlightCmdRxPort.setText(AppPrefs.getFlightCmdRxPort(this).toString())
         etGimbalCmdRxPort.setText(AppPrefs.getGimbalCmdRxPort(this).toString())
+        etWaypointCmdRxPort.setText(AppPrefs.getWaypointCmdRxPort(this).toString())
     }
 
     private fun bindListeners() {
@@ -77,6 +84,7 @@ class SettingsActivity : AppCompatActivity() {
         val videoTxPort = etVideoTxPort.text.toString().toIntOrNull() ?: -1
         val flightCmdRxPort = etFlightCmdRxPort.text.toString().toIntOrNull() ?: -1
         val gimbalCmdRxPort = etGimbalCmdRxPort.text.toString().toIntOrNull() ?: -1
+        val waypointCmdRxPort = etWaypointCmdRxPort.text.toString().toIntOrNull() ?: -1
 
         if (!NetUtils.isValidIpv4(pcIp)) {
             tvStatus.text = getString(R.string.error_invalid_pc_ip)
@@ -103,11 +111,17 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
 
+        if (waypointCmdRxPort !in VALID_PORT_RANGE) {
+            tvStatus.text = getString(R.string.error_invalid_waypoint_command_port)
+            return
+        }
+
         val ports = listOf(
             telemetryTxPort,
             videoTxPort,
             flightCmdRxPort,
-            gimbalCmdRxPort
+            gimbalCmdRxPort,
+            waypointCmdRxPort
         )
 
         if (ports.toSet().size != ports.size) {
@@ -121,7 +135,8 @@ class SettingsActivity : AppCompatActivity() {
             telemetryTxPort,
             videoTxPort,
             flightCmdRxPort,
-            gimbalCmdRxPort
+            gimbalCmdRxPort,
+            waypointCmdRxPort
         )
 
         tvStatus.text = getString(R.string.status_configuration_saved)

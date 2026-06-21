@@ -8,6 +8,10 @@ import dji.common.gimbal.Rotation
 import dji.common.gimbal.RotationMode
 import dji.common.util.CommonCallbacks
 
+/**
+ * Applies gimbal commands from the PC as absolute-angle rotations (V4 gimbal API).
+ * applyCmd uses a short duration for responsive tracking; moveToNeutral recenters slowly.
+ */
 class GimbalController(
     private val tag: String = "GimbalControllerV4"
 ) {

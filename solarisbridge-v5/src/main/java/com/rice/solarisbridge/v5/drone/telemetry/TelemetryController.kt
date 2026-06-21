@@ -7,6 +7,10 @@ import com.rice.solarisbridge.common.streaming.TelemetryStreamer
 import java.util.Timer
 import kotlin.concurrent.fixedRateTimer
 
+/**
+ * Streams telemetry to the PC (UDP JSON) on a fixed timer, pulling the latest snapshot from
+ * [TelemetryProvider] (which is fed by the V5 KeyManager).
+ */
 class TelemetryController(
     private val context: Context,
     private val tag: String = "TelemetryController"

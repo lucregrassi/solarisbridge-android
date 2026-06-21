@@ -18,6 +18,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import com.rice.solarisbridge.common.telemetry.model.TelemetrySnapshot
 
+/**
+ * Singleton that subscribes to V5 KeyManager keys (location, velocity, attitude, battery, etc.)
+ * and keeps the latest [TelemetrySnapshot] in an atomic reference for the TelemetryController to send.
+ */
 object TelemetryProvider {
 
     private const val TAG = "TelemetryProvider"

@@ -27,6 +27,10 @@ import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 
+/**
+ * Main screen of the V5 app: registers the Mobile SDK V5, shows the camera preview via the camera
+ * stream manager, and provides start/stop controls for video, telemetry and command reception.
+ */
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
     private val tag = "MainActivity"

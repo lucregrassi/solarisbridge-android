@@ -46,6 +46,7 @@ Main workflow:
 - local preview with `DJICodecManager`
 - telemetry through V4 APIs
 - flight control through V4 Virtual Stick
+- **autonomous GPS navigation through V4 Waypoint Missions** (go-to a lat/lon target)
 - gimbal control through V4 gimbal APIs
 - video streaming to PC using **JPEG frames captured from the Android preview**
 
@@ -73,6 +74,9 @@ Both app versions provide:
 - configurable network settings from the app UI
 - start/stop controls for video, telemetry, and command reception
 
+The **V4** app additionally provides **autonomous GPS navigation** (go-to a lat/lon target via
+Waypoint Missions), coordinated with manual Virtual Stick control. See the dedicated section below.
+
 ---
 
 ## Network configuration
@@ -85,6 +89,7 @@ Default values:
 - **Video TX port**: `6001`
 - **Flight command RX port**: `7000`
 - **Gimbal command RX port**: `7001`
+- **Waypoint (goto) command RX port**: `7002` *(V4 only)*
 
 Saved keys in `SharedPreferences`:
 
@@ -93,6 +98,7 @@ Saved keys in `SharedPreferences`:
 - `video_tx_port`
 - `flight_cmd_rx_port`
 - `gimbal_cmd_rx_port`
+- `waypoint_cmd_rx_port` *(V4 only; default 7002, configurable in the V4 settings screen)*
 
 ---
 
@@ -105,6 +111,7 @@ Saved keys in `SharedPreferences`:
 ### PC -> Android
 - **flight commands** via UDP JSON
 - **gimbal commands** via UDP JSON
+- **waypoint (goto) commands** via UDP JSON *(V4 only)*
 
 ---
 
@@ -122,6 +129,12 @@ Telemetry is sent every **100 ms** and includes fields such as:
 - `home_lat`, `home_lon`
 - `compass_heading`
 
+The V4 app additionally reports:
+
+- `altitude_rel_takeoff` — aircraft altitude relative to the takeoff point (used as the waypoint altitude reference)
+- `is_flying` — whether the aircraft is currently airborne
+- `goto_state` — current state of the autonomous navigation: `idle` / `enroute` / `arrived` / `failed`
+
 Flight commands are received via UDP JSON on port `7000` and use values such as:
 
 - `vx`
@@ -136,6 +149,64 @@ Gimbal commands are received via UDP JSON on port `7001` and use:
 - `roll`
 
 Both V4 and V5 run the flight command send loop at **20 Hz** and include a watchdog that sends a zero command if updates stop arriving for about **250 ms**.
+
+---
+
+## Autonomous GPS navigation (V4 only)
+
+In addition to manual Virtual Stick control, the **V4** app can fly the aircraft autonomously
+to a GPS target using DJI **Waypoint Missions**. This was designed for solar-panel monitoring:
+the PC drives the aircraft manually (e.g. visual servoing along a panel), then issues a goto to
+reposition the drone to the start of the next panel, and resumes manual control once it arrives.
+
+### Goto command
+
+Sent by the PC via UDP JSON on the waypoint port (default `7002`):
+
+```json
+{ "lat": 44.4012, "lon": 8.9560, "alt": 20.0, "speed": 3.0, "heading": 90.0 }
+```
+
+- `lat`, `lon` — target coordinates (WGS84 decimal degrees)
+- `alt` — target altitude in metres **relative to the takeoff point**
+- `speed` — cruise speed in m/s (mapped to `autoFlightSpeed`/`maxFlightSpeed`)
+- `heading` — *optional*. If present, the aircraft reaches the target with this heading
+  (`-180..180`, relative to north); if omitted, the heading follows the direction of travel.
+
+A 2-waypoint mission is built (current position → target) with `finishedAction = NO_ACTION`,
+so the aircraft **hovers** at the destination and waits for the PC to take over.
+
+### Control state machine
+
+A `ControlCoordinator` arbitrates between Virtual Stick and Waypoint Mission. The Virtual Stick
+control logic is unchanged; the coordinator only drives it from the outside. The command button
+in `MainActivity` arms/disarms the whole PC control surface (manual **and** mission).
+
+- **IDLE** — PC control off. Virtual Stick off; the aircraft hovers under its own GPS hold.
+- **MANUAL** — PC control on. Virtual Stick active; flight (`7000`), gimbal (`7001`) and goto
+  (`7002`) channels listening.
+- **MISSION** — a valid goto suspends the Virtual Stick (the `7000`/`7001` receivers stay alive)
+  and runs the Waypoint Mission.
+
+Transitions:
+
+- **MANUAL → MISSION**: a goto is validated (GPS healthy, aircraft flying, distance within range)
+  and started. An invalid goto is rejected and the state is left unchanged.
+- **MISSION → MANUAL (arrived)**: on mission completion the Virtual Stick is re-enabled **first**,
+  then `goto_state=arrived` is published, so the PC can safely resume sending velocity.
+- **MISSION → MANUAL (override)**: a valid, non-zero flight command on `7000` during a mission
+  aborts it and immediately returns to manual control.
+- **MISSION → MISSION (replace)**: a new goto aborts the current mission and starts a new one.
+- **MISSION → MANUAL (fault)**: on GPS loss / mission error the aircraft hovers and control
+  returns to Virtual Stick with `goto_state=failed`. On **radio-controller loss** the on-board
+  failsafe takes over (per the aircraft's own signal-loss configuration; not forced by the app).
+- **disarm** (command button off): any running mission is aborted and the aircraft hovers.
+
+### Handshake with the PC
+
+The PC publishes a goto, then waits until telemetry reports `goto_state=arrived` before it starts
+sending Virtual Stick velocity again. The `goto_state` field is the synchronization point between
+autonomous repositioning and manual (visual-servoing) control.
 
 ---
 
@@ -206,7 +277,8 @@ Lets the user configure:
 - flight command RX port
 - gimbal command RX port
 
-Validation includes IPv4 format, valid port range, and unique ports.
+Validation includes IPv4 format, valid port range, and unique ports. *(The V4 screen also exposes
+the waypoint/goto port, default `7002`.)*
 
 ### `MainActivity`
 Provides:
@@ -214,9 +286,13 @@ Provides:
 - live preview
 - video stream start/stop
 - telemetry stream start/stop
-- command receiver start/stop
+- PC control arm/disarm (Virtual Stick **and**, on V4, Waypoint Mission)
 - command status text
 - last received command text
+
+On V4 the command button arms the whole PC control surface: while armed the app accepts manual
+flight commands, gimbal commands, and goto/waypoint commands, and reports the navigation state
+through `goto_state` in telemetry.
 
 ---
 
@@ -257,6 +333,19 @@ Recommended precautions:
 * keep a manual recovery procedure available at all times
 * in our tests, switching the controller to S mode interrupted PC-driven command input and the aircraft returned to a stable hover state
 * always validate this behavior on your own hardware and firmware before relying on it as a safety procedure
+
+Additional notes for the V4 autonomous navigation:
+
+* a valid, non-zero flight command on the flight port aborts a running mission and returns to
+  manual control (manual override); this abort is not instantaneous, as `stopMission` is asynchronous
+* on radio-controller signal loss the aircraft's own configured failsafe takes over (the app does
+  not force a behaviour) — configure and verify it (e.g. RTH altitude and a valid home point) in
+  the DJI settings before relying on it
+* always verify the suspend → mission → resume handover **with propellers removed** before any
+  real flight, and confirm the goto altitude reference (relative to takeoff) matches your PC side
+* `MainActivity` has a debug flag `DEV_BYPASS_GOTO_PRECONDITIONS` that skips the GPS/flying checks
+  for bench testing without GPS. It **must stay `false`** for any real flight, and be used only
+  with propellers removed
 
 ---
 ## Acknowledgment

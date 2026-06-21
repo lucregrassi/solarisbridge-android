@@ -12,6 +12,10 @@ import com.rice.solarisbridge.common.network.NetUtils
 import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v5.R
 
+/**
+ * Network configuration screen (V5): PC IP and RX/TX ports. Validates IPv4 format, port range and
+ * port uniqueness before persisting through AppPrefs.
+ */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var tvDeviceIp: TextView

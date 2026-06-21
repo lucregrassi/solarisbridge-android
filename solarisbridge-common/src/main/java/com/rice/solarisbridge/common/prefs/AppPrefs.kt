@@ -10,6 +10,7 @@ object AppPrefs {
     private const val KEY_VIDEO_TX_PORT = "video_tx_port"
     private const val KEY_FLIGHT_CMD_RX_PORT = "flight_cmd_rx_port"
     private const val KEY_GIMBAL_CMD_RX_PORT = "gimbal_cmd_rx_port"
+    private const val KEY_WAYPOINT_CMD_RX_PORT = "waypoint_cmd_rx_port"
 
     fun getPcIp(ctx: Context): String? =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -31,13 +32,22 @@ object AppPrefs {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getInt(KEY_GIMBAL_CMD_RX_PORT, 7001)
 
+    fun getWaypointCmdRxPort(ctx: Context): Int =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_WAYPOINT_CMD_RX_PORT, 7002)
+
+    /**
+     * waypointCmdRxPort has a default to keep existing callers source-compatible.
+     * Pass the real value once SettingsActivity exposes the field.
+     */
     fun saveNetworkConfig(
         ctx: Context,
         ip: String,
         telemetryTxPort: Int,
         videoTxPort: Int,
         flightCmdRxPort: Int,
-        gimbalCmdRxPort: Int
+        gimbalCmdRxPort: Int,
+        waypointCmdRxPort: Int = 7002
     ) {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs.edit()
@@ -46,6 +56,7 @@ object AppPrefs {
             .putInt(KEY_VIDEO_TX_PORT, videoTxPort)
             .putInt(KEY_FLIGHT_CMD_RX_PORT, flightCmdRxPort)
             .putInt(KEY_GIMBAL_CMD_RX_PORT, gimbalCmdRxPort)
+            .putInt(KEY_WAYPOINT_CMD_RX_PORT, waypointCmdRxPort)
             .apply()
     }
 }

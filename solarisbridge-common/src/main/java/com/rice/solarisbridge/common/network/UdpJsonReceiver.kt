@@ -6,6 +6,11 @@ import java.net.DatagramSocket
 import java.net.SocketException
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Background UDP listener. Binds [port] on a daemon thread and invokes [onJson] for every datagram
+ * with the decoded (trimmed, UTF-8) text and the sender "ip:port". start()/stop() are idempotent;
+ * stop() closes the socket, which unblocks the receive loop.
+ */
 class UdpJsonReceiver(
     private val port: Int,
     private val tag: String,

@@ -8,6 +8,10 @@ import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.interfaces.ICameraStreamManager
 
+/**
+ * Streams the V5 camera to the PC. Receives the encoded camera stream via the camera stream
+ * manager's ReceiveStreamListener and forwards each frame through [EncodedVideoStreamer] (TCP).
+ */
 class VideoStreamController(
     private val context: Context,
     private val cameraIndex: ComponentIndexType,

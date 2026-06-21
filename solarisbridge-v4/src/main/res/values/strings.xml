@@ -68,6 +68,7 @@
     <string name="hint_video_port">Video port (Drone → PC)</string>
     <string name="hint_flight_command_port">Flight command port (PC → Drone)</string>
     <string name="hint_gimbal_command_port">Gimbal command port (PC → Drone)</string>
+    <string name="hint_waypoint_command_port">Waypoint/goto command port (PC → Drone)</string>
     <string name="button_save">Save</string>
 
     <!-- Settings validation errors -->
@@ -76,5 +77,6 @@
     <string name="error_invalid_video_port">Invalid video port</string>
     <string name="error_invalid_flight_command_port">Invalid flight command port</string>
     <string name="error_invalid_gimbal_command_port">Invalid gimbal command port</string>
+    <string name="error_invalid_waypoint_command_port">Invalid waypoint command port</string>
     <string name="error_ports_must_be_different">All ports must be different</string>
 </resources>

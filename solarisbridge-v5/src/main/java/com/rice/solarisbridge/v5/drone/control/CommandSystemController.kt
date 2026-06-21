@@ -19,6 +19,11 @@ import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 
+/**
+ * Receives PC flight/gimbal commands over UDP and drives the aircraft via the V5 Virtual Stick
+ * (VirtualStickManager advanced mode). Sends the last command at a fixed rate and zeroes it through
+ * a watchdog if updates stop. (V5 app: manual control only; autonomous navigation lives in V4.)
+ */
 class CommandSystemController(
     private val context: Context,
     private val gimbalController: GimbalController,

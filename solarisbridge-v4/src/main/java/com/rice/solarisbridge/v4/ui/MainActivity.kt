@@ -24,7 +24,9 @@ import com.rice.solarisbridge.common.prefs.AppPrefs
 import com.rice.solarisbridge.v4.R
 import com.rice.solarisbridge.v4.app.BridgeBootstrapV4
 import com.rice.solarisbridge.v4.drone.control.CommandSystemController
+import com.rice.solarisbridge.v4.drone.control.ControlCoordinator
 import com.rice.solarisbridge.v4.drone.control.GimbalController
+import com.rice.solarisbridge.v4.drone.control.WaypointMissionController
 import com.rice.solarisbridge.v4.drone.telemetry.TelemetryController
 import com.rice.solarisbridge.v4.drone.telemetry.VideoStreamController
 import dji.common.error.DJIError
@@ -32,9 +34,20 @@ import dji.common.util.CommonCallbacks
 import dji.sdk.flightcontroller.FlightAssistant
 import dji.sdk.products.Aircraft
 
+/**
+ * Main screen of the V4 app: live preview plus start/stop controls for video, telemetry and PC
+ * control. Builds and wires the controllers (gimbal, telemetry, video, command system, waypoint
+ * mission) and the ControlCoordinator, and renders their state. The command button arms/disarms
+ * the whole PC control surface (manual Virtual Stick + autonomous Waypoint Mission).
+ */
 class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
     private val TAG = "MainActivityV4"
+
+    companion object {
+        // Minimum satellite count to accept a goto/mission (GPS considered healthy enough).
+        private const val MIN_SATELLITES_FOR_MISSION = 10
+    }
 
     private lateinit var videoTexture: TextureView
     private lateinit var controlPanel: ScrollView
@@ -72,6 +85,8 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var telemetryController: TelemetryController
     private lateinit var videoStreamController: VideoStreamController
     private lateinit var commandSystemController: CommandSystemController
+    private lateinit var waypointMissionController: WaypointMissionController
+    private lateinit var controlCoordinator: ControlCoordinator
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.i(TAG, "onCreate")
@@ -97,6 +112,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         videoStreamController.rebuildFromPrefs()
         telemetryController.rebuildFromPrefs()
         commandSystemController.rebuildFromPrefs()
+        waypointMissionController.rebuildFromPrefs()
 
         telemetryController.startMonitoring()
 
@@ -115,6 +131,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         videoStreamController.rebuildFromPrefs()
         telemetryController.rebuildFromPrefs()
         commandSystemController.rebuildFromPrefs()
+        waypointMissionController.rebuildFromPrefs()
 
         telemetryController.startMonitoring()
 
@@ -131,6 +148,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         if (!isChangingConfigurations) {
             stopObstacleAvoidanceAutoRefresh()
+            if (::waypointMissionController.isInitialized) {
+                waypointMissionController.abortMission()
+                waypointMissionController.stopListening()
+            }
             commandSystemController.stop(moveGimbalToNeutral = false)
             videoStreamController.stop()
             telemetryController.stop()
@@ -145,6 +166,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         if (!isChangingConfigurations) {
             stopObstacleAvoidanceAutoRefresh()
+
+            if (::waypointMissionController.isInitialized) {
+                waypointMissionController.abortMission()
+                waypointMissionController.stopListening()
+            }
 
             if (::commandSystemController.isInitialized) {
                 commandSystemController.stop(moveGimbalToNeutral = false)
@@ -220,6 +246,30 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             onStatusLine = { line -> showCmdLine(line) },
             onRunningChanged = {
                 runOnUiThread { renderUiState() }
+            },
+            onManualOverride = { cmd -> controlCoordinator.onManualOverride(cmd) }
+        )
+
+        waypointMissionController = WaypointMissionController(
+            context = this,
+            currentPositionProvider = { telemetryController.currentPositionForMission() },
+            onGotoReceived = { cmd -> controlCoordinator.onGotoReceived(cmd) },
+            onMissionFinished = { controlCoordinator.onMissionFinished() },
+            onMissionFailed = { reason -> controlCoordinator.onMissionFailed(reason) },
+            onStatusLine = { line -> showCmdLine(line) }
+        )
+
+        controlCoordinator = ControlCoordinator(
+            commandSystem = commandSystemController,
+            waypointMission = waypointMissionController,
+            onGotoState = { state -> telemetryController.setGotoState(state.name.lowercase()) },
+            onArmedChanged = { runOnUiThread { renderUiState() } },
+            onStatusLine = { line -> showCmdLine(line) },
+            gpsHealthyProvider = {
+                (telemetryController.latestSatelliteCount() ?: 0) >= MIN_SATELLITES_FOR_MISSION
+            },
+            isFlyingProvider = {
+                telemetryController.isFlying()
             }
         )
     }
@@ -249,11 +299,12 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
 
         btnCmd.setOnClickListener {
-            Log.i(TAG, "btnCmd click: running=${commandSystemController.isRunning}")
+            Log.i(TAG, "btnCmd click: armed=${controlCoordinator.isArmed}")
 
             if (!isDroneConnected()) return@setOnClickListener
 
-            commandSystemController.toggle()
+            // Arms/disarms the whole PC control surface (manual + mission).
+            controlCoordinator.toggleArmed()
             renderUiState()
         }
 
@@ -686,7 +737,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         val green = ColorStateList.valueOf(getColor(R.color.state_green))
         val red = ColorStateList.valueOf(getColor(R.color.state_red))
 
-        if (commandSystemController.isRunning) {
+        // "Armed" = PC control active, both in manual (Virtual Stick) and in MISSION.
+        val pcControlArmed = ::controlCoordinator.isInitialized && controlCoordinator.isArmed
+
+        if (pcControlArmed) {
             btnCmd.text = getString(R.string.button_stop_command_receiver)
             btnCmd.backgroundTintList = red
             tvCmdStatus.text = getString(R.string.status_command_system_on)

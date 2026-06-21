@@ -12,6 +12,10 @@ import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
 
+/**
+ * Applies gimbal commands from the PC as absolute-angle rotations via the V5 KeyManager
+ * (GimbalKey actions). applyCmd uses a short duration for responsive tracking.
+ */
 class GimbalController(
     private val tag: String = "GimbalController",
     private val gimbalIndex: Int = 0
