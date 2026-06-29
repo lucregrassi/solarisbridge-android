@@ -45,8 +45,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private val TAG = "MainActivityV4"
 
     companion object {
-        // Minimum satellite count to accept a goto/mission (GPS considered healthy enough).
         private const val MIN_SATELLITES_FOR_MISSION = 10
+
+        // DEBUG ONLY — bench testing without GPS/flight.
+        private const val DEV_BYPASS_GOTO_PRECONDITIONS = true   // <-- con true bypassa le precond
     }
 
     private lateinit var videoTexture: TextureView
@@ -266,10 +268,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             onArmedChanged = { runOnUiThread { renderUiState() } },
             onStatusLine = { line -> showCmdLine(line) },
             gpsHealthyProvider = {
-                (telemetryController.latestSatelliteCount() ?: 0) >= MIN_SATELLITES_FOR_MISSION
+                DEV_BYPASS_GOTO_PRECONDITIONS ||
+                        (telemetryController.latestSatelliteCount() ?: 0) >= MIN_SATELLITES_FOR_MISSION
             },
             isFlyingProvider = {
-                telemetryController.isFlying()
+                DEV_BYPASS_GOTO_PRECONDITIONS || telemetryController.isFlying()
             }
         )
     }

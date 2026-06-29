@@ -79,6 +79,8 @@ class WaypointMissionController(
         const val MAX_WP_DISTANCE_M = 1900.0    // SDK limit ~2 km between consecutive waypoints
         const val MIN_SPEED = 1.0f
         const val MAX_SPEED = 15.0f
+        const val MAX_UPLOAD_ATTEMPTS = 4       // V4 upload often needs retries (retryUploadMission)
+        const val UPLOAD_RETRY_DELAY_MS = 800L
     }
 
     private val operator: WaypointMissionOperator?
@@ -221,27 +223,58 @@ class WaypointMissionController(
         isMissionActive = true
         onStatusLine("MISSION uploading...")
 
-        op.uploadMission(object : CommonCallbacks.CompletionCallback<DJIError> {
+        uploadThenStart(op, cmd, attempt = 1)
+    }
+
+    /**
+     * Uploads the mission, then starts it. The DJI V4 error "info of waypoint mission is not
+     * completely uploaded" is often transient: the upload does not finish in one call. We retry
+     * with retryUploadMission (which resumes the partial upload) up to MAX_UPLOAD_ATTEMPTS before
+     * declaring a fault.
+     */
+    private fun uploadThenStart(op: WaypointMissionOperator, cmd: WaypointGotoCmd, attempt: Int) {
+        op.uploadMission(uploadCallback(op, cmd, attempt))
+    }
+
+    private fun uploadCallback(
+        op: WaypointMissionOperator,
+        cmd: WaypointGotoCmd,
+        attempt: Int
+    ): CommonCallbacks.CompletionCallback<DJIError> =
+        object : CommonCallbacks.CompletionCallback<DJIError> {
             override fun onResult(uploadError: DJIError?) {
-                if (uploadError != null) {
-                    Log.w(tag, "uploadMission failed: ${uploadError.description}")
+                when {
+                    uploadError == null -> startMissionNow(op, cmd)
+                    attempt < MAX_UPLOAD_ATTEMPTS -> {
+                        Log.w(tag, "uploadMission attempt $attempt failed: ${uploadError.description} -> retry")
+                        onStatusLine("MISSION upload retry ${attempt + 1}")
+                        // Restart the upload from scratch (retryUploadMission only works while the
+                        // operator is still UPLOADING; after this failure it is not, so we re-upload).
+                        main.postDelayed(
+                            { op.uploadMission(uploadCallback(op, cmd, attempt + 1)) },
+                            UPLOAD_RETRY_DELAY_MS
+                        )
+                    }
+                    else -> {
+                        Log.w(tag, "uploadMission failed after $attempt attempts: ${uploadError.description}")
+                        cleanupAfterMission()
+                        onMissionFailed(FaultReason.MISSION_ERROR)
+                    }
+                }
+            }
+        }
+
+    private fun startMissionNow(op: WaypointMissionOperator, cmd: WaypointGotoCmd) {
+        op.startMission(object : CommonCallbacks.CompletionCallback<DJIError> {
+            override fun onResult(startError: DJIError?) {
+                if (startError != null) {
+                    Log.w(tag, "startMission failed: ${startError.description}")
                     cleanupAfterMission()
                     onMissionFailed(FaultReason.MISSION_ERROR)
-                    return
+                } else {
+                    Log.i(tag, "mission STARTED -> ${cmd.lat},${cmd.lon} alt=${cmd.alt} v=${cmd.speed} hdg=${cmd.heading}")
+                    onStatusLine("MISSION running")
                 }
-
-                op.startMission(object : CommonCallbacks.CompletionCallback<DJIError> {
-                    override fun onResult(startError: DJIError?) {
-                        if (startError != null) {
-                            Log.w(tag, "startMission failed: ${startError.description}")
-                            cleanupAfterMission()
-                            onMissionFailed(FaultReason.MISSION_ERROR)
-                        } else {
-                            Log.i(tag, "mission STARTED -> ${cmd.lat},${cmd.lon} alt=${cmd.alt} v=${cmd.speed} hdg=${cmd.heading}")
-                            onStatusLine("MISSION running")
-                        }
-                    }
-                })
             }
         })
     }
