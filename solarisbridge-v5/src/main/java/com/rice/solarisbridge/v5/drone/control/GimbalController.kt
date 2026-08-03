@@ -22,7 +22,7 @@ class GimbalController(
 ) {
     fun applyCmd(cmd: GimbalCmd) {
         sendAngleCommand(
-            yawDeg = cmd.yaw.toDouble(),
+            yawDeg = (cmd.yaw ?: 0f).toDouble(),   // yaw is optional in the shared model; V5 keeps using it
             pitchDeg = cmd.pitch.toDouble(),
             rollDeg = cmd.roll.toDouble(),
             durationSec = 0.08

@@ -10,10 +10,12 @@ data class DroneCmd(
 )
 
 // Gimbal command, angles in degrees.
+// yaw is optional: the V4 app ignores it (the gimbal follows the aircraft heading in YAW_FOLLOW
+// mode) and applies only pitch/roll. V5 still uses yaw if present.
 data class GimbalCmd(
-    val yaw: Float,
     val pitch: Float,
-    val roll: Float
+    val roll: Float,
+    val yaw: Float? = null
 )
 
 /**

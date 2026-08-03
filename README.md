@@ -144,9 +144,13 @@ Flight commands are received via UDP JSON on port `7000` and use values such as:
 
 Gimbal commands are received via UDP JSON on port `7001` and use:
 
-- `yaw`
 - `pitch`
 - `roll`
+- `yaw` *(optional; ignored by V4)*
+
+On **V4** the gimbal is kept in **YAW_FOLLOW** mode, so its yaw automatically follows the aircraft
+heading and the PC only needs to send `pitch`/`roll`. The `yaw` field is optional and ignored by V4
+(V5 still uses it if present).
 
 Both V4 and V5 run the flight command send loop at **20 Hz** and include a watchdog that sends a zero command if updates stop arriving for about **250 ms**.
 

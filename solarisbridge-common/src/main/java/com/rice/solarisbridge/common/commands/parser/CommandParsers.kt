@@ -20,9 +20,10 @@ object CommandParsers {
     fun parseGimbal(json: String): GimbalCmd? = try {
         val o = JSONObject(json)
         GimbalCmd(
-            yaw = o.getDouble("yaw").toFloat(),
             pitch = o.getDouble("pitch").toFloat(),
-            roll = o.getDouble("roll").toFloat()
+            roll = o.getDouble("roll").toFloat(),
+            // yaw is optional (V4 ignores it; the gimbal follows the aircraft in YAW_FOLLOW mode).
+            yaw = if (o.has("yaw") && !o.isNull("yaw")) o.getDouble("yaw").toFloat() else null
         )
     } catch (_: Throwable) { null }
 

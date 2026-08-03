@@ -140,6 +140,9 @@ class CommandSystemController(
                 overrideNotified = false
                 resuming = false
 
+                // Keep the gimbal yaw following the aircraft heading (so the PC only sends pitch/roll).
+                gimbalController.applyFollowYawMode()
+
                 try {
                     fc.setVirtualStickAdvancedModeEnabled(true)
                 } catch (t: Throwable) {
