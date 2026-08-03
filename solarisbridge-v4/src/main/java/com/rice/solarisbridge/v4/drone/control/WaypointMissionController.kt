@@ -25,6 +25,7 @@ import dji.sdk.mission.waypoint.WaypointMissionOperator
 import dji.sdk.mission.waypoint.WaypointMissionOperatorListener
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -79,7 +80,7 @@ class WaypointMissionController(
         const val MAX_WP_DISTANCE_M = 1900.0    // SDK limit ~2 km between consecutive waypoints
         const val MIN_SPEED = 1.0f
         const val MAX_SPEED = 15.0f
-        const val MAX_UPLOAD_ATTEMPTS = 4       // V4 upload often needs retries (retryUploadMission)
+        const val MAX_UPLOAD_ATTEMPTS = 10      // V4 upload is flaky: ~20% needs several retries
         const val UPLOAD_RETRY_DELAY_MS = 800L
     }
 
@@ -329,26 +330,33 @@ class WaypointMissionController(
 
         // Waypoint 1: current position (at current altitude, so the altitude does not jump).
         val wp1 = Waypoint(current.lat, current.lon, current.altRelTakeoff)
-
-        // Waypoint 2: target, with heading if provided.
+        // Waypoint 2: target.
         val wp2 = Waypoint(cmd.lat, cmd.lon, cmd.alt)
-        cmd.heading?.let { h ->
-            wp2.heading = h.toInt().coerceIn(-180, 180)
-        }
 
-        val headingMode = if (cmd.heading != null) {
-            WaypointMissionHeadingMode.USING_WAYPOINT_HEADING
-        } else {
-            WaypointMissionHeadingMode.AUTO  // nose follows the direction of travel
-        }
-
-        return WaypointMission.Builder()
+        val builder = WaypointMission.Builder()
             .autoFlightSpeed(cruise)
             .maxFlightSpeed(maxV)
             .finishedAction(WaypointMissionFinishedAction.NO_ACTION)   // hover on arrival
             .flightPathMode(WaypointMissionFlightPathMode.NORMAL)
-            .headingMode(headingMode)
             .gotoFirstWaypointMode(WaypointMissionGotoWaypointMode.SAFELY)
+
+        val heading = cmd.heading
+        if (heading != null) {
+            // In USING_WAYPOINT_HEADING the heading interpolates between two waypoints
+            //  with different headings, so:
+            //  - wp1.heading = initial bearing toward the target (starts facing where it goes)
+            //  - wp2.heading = requested final heading
+            // The aircraft rotates gradually during the leg and arrives already correctly oriented.
+            wp1.heading = bearingDegrees(current.lat, current.lon, cmd.lat, cmd.lon)
+                .roundToInt().coerceIn(-180, 180)
+            wp2.heading = heading.roundToInt().coerceIn(-180, 180)
+            builder.headingMode(WaypointMissionHeadingMode.USING_WAYPOINT_HEADING)
+        } else {
+            // No requested heading: nose follows the direction of flight.
+            builder.headingMode(WaypointMissionHeadingMode.AUTO)
+        }
+
+        return builder
             .addWaypoint(wp1)
             .addWaypoint(wp2)
             .build()
@@ -365,6 +373,16 @@ class WaypointMissionController(
             // GPS_LOST and MISSION_ERROR are handled the same way by the coordinator.
             FaultReason.MISSION_ERROR
         }
+    }
+
+    /** Initial bearing (forward azimuth) from point 1 to point 2, in degrees [-180, 180], 0 = North. */
+    private fun bearingDegrees(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val phi1 = Math.toRadians(lat1)
+        val phi2 = Math.toRadians(lat2)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val y = sin(dLon) * cos(phi2)
+        val x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(dLon)
+        return Math.toDegrees(atan2(y, x))
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

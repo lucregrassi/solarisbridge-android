@@ -170,8 +170,9 @@ Sent by the PC via UDP JSON on the waypoint port (default `7002`):
 - `lat`, `lon` — target coordinates (WGS84 decimal degrees)
 - `alt` — target altitude in metres **relative to the takeoff point**
 - `speed` — cruise speed in m/s (mapped to `autoFlightSpeed`/`maxFlightSpeed`)
-- `heading` — *optional*. If present, the aircraft reaches the target with this heading
-  (`-180..180`, relative to north); if omitted, the heading follows the direction of travel.
+- `heading` — *optional* final aircraft heading at the target (degrees, `-180..180`, 0 = North).
+  The aircraft starts facing the target and rotates gradually during the leg, arriving already
+  oriented to this heading. If omitted, the nose follows the direction of flight (AUTO).
 
 A 2-waypoint mission is built (current position → target) with `finishedAction = NO_ACTION`,
 so the aircraft **hovers** at the destination and waits for the PC to take over.
