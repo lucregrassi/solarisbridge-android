@@ -18,6 +18,7 @@ import dji.common.mission.waypoint.WaypointMissionFinishedAction
 import dji.common.mission.waypoint.WaypointMissionFlightPathMode
 import dji.common.mission.waypoint.WaypointMissionGotoWaypointMode
 import dji.common.mission.waypoint.WaypointMissionHeadingMode
+import dji.common.mission.waypoint.WaypointMissionState
 import dji.common.mission.waypoint.WaypointMissionUploadEvent
 import dji.common.util.CommonCallbacks
 import dji.sdk.mission.MissionControl
@@ -74,14 +75,24 @@ class WaypointMissionController(
     var isMissionActive: Boolean = false
         private set
 
+    // --- Upload state machine (see attemptUpload/tryStartIfReady) ---
+    private var pendingMission: WaypointMission? = null
+    private var pendingCmd: WaypointGotoCmd? = null
+    private var uploadAttempt = 0
+    @Volatile private var missionStarted = false
+    @Volatile private var retryScheduled = false
+    private var missionGeneration = 0   // invalidates pending retries when a new mission replaces this one
+    private val uploadTimeoutRunnable = Runnable { onUploadTimeout() }
+
     // DJI V4 waypoint constraints.
     private companion object {
         const val MIN_WP_DISTANCE_M = 1.0       // distances < ~0.5 m are rejected by the SDK
         const val MAX_WP_DISTANCE_M = 1900.0    // SDK limit ~2 km between consecutive waypoints
         const val MIN_SPEED = 1.0f
         const val MAX_SPEED = 15.0f
-        const val MAX_UPLOAD_ATTEMPTS = 10      // V4 upload is flaky: ~20% needs several retries
-        const val UPLOAD_RETRY_DELAY_MS = 800L
+        const val MAX_UPLOAD_ATTEMPTS = 10      // V4 upload is flaky; a few attempts are usually needed
+        const val UPLOAD_RETRY_DELAY_MS = 1500L // let the operator settle back to READY_TO_UPLOAD
+        const val UPLOAD_TIMEOUT_MS = 3000L     // if the upload stalls (no update/error), retry
     }
 
     private val operator: WaypointMissionOperator?
@@ -89,7 +100,26 @@ class WaypointMissionController(
 
     private val missionListener = object : WaypointMissionOperatorListener {
         override fun onDownloadUpdate(event: WaypointMissionDownloadEvent) {}
-        override fun onUploadUpdate(event: WaypointMissionUploadEvent) {}
+
+        // Real-time upload progress. We start the mission only once the operator actually reaches
+        // READY_TO_EXECUTE, and retry (reload + upload) if the upload reports an error. Marshalled
+        // onto the main thread so it never races with the retry/timeout logic.
+        override fun onUploadUpdate(event: WaypointMissionUploadEvent) {
+            val err = event.error
+            val state = event.currentState
+            main.post {
+                if (missionStarted || !isMissionActive) return@post
+                if (err != null) {
+                    Log.w(tag, "onUploadUpdate error: ${err.description}")
+                    scheduleUploadRetry()
+                    return@post
+                }
+                if (state == WaypointMissionState.READY_TO_EXECUTE) {
+                    tryStartIfReady()
+                }
+            }
+        }
+
         override fun onExecutionUpdate(event: WaypointMissionExecutionEvent) {}
         override fun onExecutionStart() {
             Log.i(tag, "mission onExecutionStart")
@@ -210,74 +240,123 @@ class WaypointMissionController(
             return
         }
 
-        val mission = buildMission(cmd, current)
-
-        // load (synchronous) -> upload -> start
-        val loadError = op.loadMission(mission)
-        if (loadError != null) {
-            Log.w(tag, "loadMission failed: ${loadError.description}")
-            onMissionFailed(FaultReason.MISSION_ERROR)
-            return
-        }
+        // Reset the upload state machine and register the listener before the first attempt.
+        pendingMission = buildMission(cmd, current)
+        pendingCmd = cmd
+        uploadAttempt = 0
+        missionStarted = false
+        retryScheduled = false
+        missionGeneration++
+        main.removeCallbacks(uploadTimeoutRunnable)
 
         op.addListener(missionListener)
         isMissionActive = true
         onStatusLine("MISSION uploading...")
 
-        uploadThenStart(op, cmd, attempt = 1)
+        attemptUpload()
     }
 
     /**
-     * Uploads the mission, then starts it. The DJI V4 error "info of waypoint mission is not
-     * completely uploaded" is often transient: the upload does not finish in one call. We retry
-     * with retryUploadMission (which resumes the partial upload) up to MAX_UPLOAD_ATTEMPTS before
-     * declaring a fault.
+     * One upload attempt: RE-LOAD the mission, then upload. Re-loading each time is essential —
+     * after a failed upload the operator no longer holds a valid loaded mission, so re-uploading
+     * without re-loading returns "could not be executed". The mission is NOT started here: it is
+     * started (tryStartIfReady) only once the operator actually reaches READY_TO_EXECUTE, signalled
+     * by onUploadUpdate or the uploadMission success callback.
      */
-    private fun uploadThenStart(op: WaypointMissionOperator, cmd: WaypointGotoCmd, attempt: Int) {
-        op.uploadMission(uploadCallback(op, cmd, attempt))
-    }
+    private fun attemptUpload() {
+        if (missionStarted || !isMissionActive) return
 
-    private fun uploadCallback(
-        op: WaypointMissionOperator,
-        cmd: WaypointGotoCmd,
-        attempt: Int
-    ): CommonCallbacks.CompletionCallback<DJIError> =
-        object : CommonCallbacks.CompletionCallback<DJIError> {
-            override fun onResult(uploadError: DJIError?) {
-                when {
-                    uploadError == null -> startMissionNow(op, cmd)
-                    attempt < MAX_UPLOAD_ATTEMPTS -> {
-                        Log.w(tag, "uploadMission attempt $attempt failed: ${uploadError.description} -> retry")
-                        onStatusLine("MISSION upload retry ${attempt + 1}")
-                        // Restart the upload from scratch (retryUploadMission only works while the
-                        // operator is still UPLOADING; after this failure it is not, so we re-upload).
-                        main.postDelayed(
-                            { op.uploadMission(uploadCallback(op, cmd, attempt + 1)) },
-                            UPLOAD_RETRY_DELAY_MS
-                        )
-                    }
-                    else -> {
-                        Log.w(tag, "uploadMission failed after $attempt attempts: ${uploadError.description}")
-                        cleanupAfterMission()
-                        onMissionFailed(FaultReason.MISSION_ERROR)
-                    }
-                }
-            }
+        val op = operator ?: run { failMission("operator null"); return }
+        val mission = pendingMission ?: run { failMission("no pending mission"); return }
+
+        uploadAttempt++
+        if (uploadAttempt > MAX_UPLOAD_ATTEMPTS) {
+            failMission("upload failed after ${uploadAttempt - 1} attempts")
+            return
+        }
+        Log.i(tag, "upload attempt $uploadAttempt (reload + upload)")
+        onStatusLine("MISSION upload attempt $uploadAttempt")
+
+        // A) re-load so the operator always has a valid loaded mission for this attempt.
+        val loadError = op.loadMission(mission)
+        if (loadError != null) {
+            Log.w(tag, "loadMission (attempt $uploadAttempt) failed: ${loadError.description}")
+            scheduleUploadRetry()
+            return
         }
 
-    private fun startMissionNow(op: WaypointMissionOperator, cmd: WaypointGotoCmd) {
+        // B) upload. Success here may already be READY_TO_EXECUTE, so we check the state; otherwise
+        // we wait for the READY_TO_EXECUTE transition in onUploadUpdate.
+        op.uploadMission(object : CommonCallbacks.CompletionCallback<DJIError> {
+            override fun onResult(uploadError: DJIError?) {
+                if (uploadError != null) {
+                    Log.w(tag, "uploadMission (attempt $uploadAttempt) failed: ${uploadError.description}")
+                    scheduleUploadRetry()
+                } else {
+                    tryStartIfReady()
+                }
+            }
+        })
+
+        // C) stall guard: if we never reach READY_TO_EXECUTE (no update, no error), retry.
+        main.removeCallbacks(uploadTimeoutRunnable)
+        main.postDelayed(uploadTimeoutRunnable, UPLOAD_TIMEOUT_MS)
+    }
+
+    /** Starts the mission only when the operator is actually READY_TO_EXECUTE (idempotent). */
+    private fun tryStartIfReady() {
+        if (missionStarted || !isMissionActive) return
+        val op = operator ?: return
+        if (op.currentState != WaypointMissionState.READY_TO_EXECUTE) return
+
+        missionStarted = true
+        main.removeCallbacks(uploadTimeoutRunnable)
+
         op.startMission(object : CommonCallbacks.CompletionCallback<DJIError> {
             override fun onResult(startError: DJIError?) {
                 if (startError != null) {
                     Log.w(tag, "startMission failed: ${startError.description}")
-                    cleanupAfterMission()
-                    onMissionFailed(FaultReason.MISSION_ERROR)
+                    failMission("startMission failed")
                 } else {
-                    Log.i(tag, "mission STARTED -> ${cmd.lat},${cmd.lon} alt=${cmd.alt} v=${cmd.speed} hdg=${cmd.heading}")
+                    val c = pendingCmd
+                    Log.i(tag, "mission STARTED -> ${c?.lat},${c?.lon} alt=${c?.alt} v=${c?.speed} hdg=${c?.heading}")
                     onStatusLine("MISSION running")
                 }
             }
         })
+    }
+
+    private fun onUploadTimeout() {
+        if (missionStarted || !isMissionActive) return
+        if (operator?.currentState == WaypointMissionState.READY_TO_EXECUTE) {
+            tryStartIfReady()
+        } else {
+            Log.w(tag, "upload stalled (timeout) -> retry")
+            scheduleUploadRetry()
+        }
+    }
+
+    /** Schedules a single retry (reload + upload) after a delay; coalesced so triggers don't stack. */
+    private fun scheduleUploadRetry() {
+        if (retryScheduled || missionStarted || !isMissionActive) return
+        main.removeCallbacks(uploadTimeoutRunnable)
+        if (uploadAttempt >= MAX_UPLOAD_ATTEMPTS) {
+            failMission("upload failed after $uploadAttempt attempts")
+            return
+        }
+        retryScheduled = true
+        val gen = missionGeneration
+        onStatusLine("MISSION upload retry ${uploadAttempt + 1}")
+        main.postDelayed({
+            retryScheduled = false
+            if (gen == missionGeneration) attemptUpload()   // ignore retries from a replaced mission
+        }, UPLOAD_RETRY_DELAY_MS)
+    }
+
+    private fun failMission(reason: String) {
+        Log.w(tag, "mission FAILED: $reason")
+        cleanupAfterMission()
+        onMissionFailed(FaultReason.MISSION_ERROR)
     }
 
     /**
@@ -293,6 +372,12 @@ class WaypointMissionController(
 
         // Detach the listener before stopping so the deliberate stop is not reported as a fault.
         isMissionActive = false
+        missionStarted = false
+        retryScheduled = false
+        pendingMission = null
+        pendingCmd = null
+        missionGeneration++   // invalidate any pending upload retry
+        main.removeCallbacks(uploadTimeoutRunnable)
         try {
             op.removeListener(missionListener)
         } catch (t: Throwable) {
@@ -313,6 +398,12 @@ class WaypointMissionController(
 
     private fun cleanupAfterMission() {
         isMissionActive = false
+        missionStarted = false
+        retryScheduled = false
+        pendingMission = null
+        pendingCmd = null
+        missionGeneration++   // invalidate any pending retry
+        main.removeCallbacks(uploadTimeoutRunnable)
         try {
             operator?.removeListener(missionListener)
         } catch (t: Throwable) {
