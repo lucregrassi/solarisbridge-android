@@ -144,13 +144,12 @@ Flight commands are received via UDP JSON on port `7000` and use values such as:
 
 Gimbal commands are received via UDP JSON on port `7001` and use:
 
+- `yaw`
 - `pitch`
 - `roll`
-- `yaw` *(optional; ignored by V4)*
 
-On **V4** the gimbal is kept in **YAW_FOLLOW** mode, so its yaw automatically follows the aircraft
-heading and the PC only needs to send `pitch`/`roll`. The `yaw` field is optional and ignored by V4
-(V5 still uses it if present).
+All three angles are applied as absolute rotations, so the PC has full control of the gimbal.
+`yaw` is optional for backward compatibility: if omitted, V4 leaves the gimbal yaw untouched.
 
 Both V4 and V5 run the flight command send loop at **20 Hz** and include a watchdog that sends a zero command if updates stop arriving for about **250 ms**.
 
@@ -175,11 +174,15 @@ Sent by the PC via UDP JSON on the waypoint port (default `7002`):
 - `alt` — target altitude in metres **relative to the takeoff point**
 - `speed` — cruise speed in m/s (mapped to `autoFlightSpeed`/`maxFlightSpeed`)
 - `heading` — *optional* final aircraft heading at the target (degrees, `-180..180`, 0 = North).
-  The aircraft starts facing the target and rotates gradually during the leg, arriving already
-  oriented to this heading. If omitted, the nose follows the direction of flight (AUTO).
+  The aircraft first rotates in place to this heading, then flies to the target as a pure
+  translation (no rotation during the leg). If omitted, the nose follows the direction of flight (AUTO).
 
 A 2-waypoint mission is built (current position → target) with `finishedAction = NO_ACTION`,
 so the aircraft **hovers** at the destination and waits for the PC to take over.
+
+Start sequence: the Virtual Stick is disabled first and the mission is loaded/uploaded only after
+the aircraft confirms it (+500 ms settle). Load, upload and start are retried together (up to 10
+attempts) on any error, stall or start rejection; the last DJI error is shown in the status line.
 
 ### Control state machine
 

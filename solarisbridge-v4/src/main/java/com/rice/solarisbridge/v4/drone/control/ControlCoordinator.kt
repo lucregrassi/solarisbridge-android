@@ -44,6 +44,9 @@ class ControlCoordinator(
 
     private var mode: Mode = Mode.MANUAL
 
+    // Incremented on every goto/override/disarm: invalidates a pending (not yet started) mission.
+    private var gotoGeneration = 0
+
     // ---------------------------------------------------------------------
     // Command button: arms/disarms the whole PC control surface (manual + mission)
     // ---------------------------------------------------------------------
@@ -61,6 +64,7 @@ class ControlCoordinator(
 
     fun disarm() = main.post {
         if (!isArmed) return@post
+        gotoGeneration++
         if (mode == Mode.MISSION) {
             waypointMission.abortMission()  // aircraft hovers (mission stop / failsafe)
         }
@@ -92,13 +96,27 @@ class ControlCoordinator(
             return@post   // stay in the current state (self-loop)
         }
 
-        // No-op if already suspended (replace case). The replace itself (stop current mission
-        // before starting the new one) is handled inside WaypointMissionController.startMission.
-        commandSystem.suspendVirtualStick()   // VS off, but 7000/7001 stay alive (override)
+        // The mission is started ONLY after the FlightController confirms Virtual Stick is off
+        // (plus a short settle delay): starting a mission while VS is still enabled is rejected by
+        // the aircraft and was the main cause of the intermittent mission failures.
+        // The replace itself (stop current mission before starting the new one) is handled
+        // inside WaypointMissionController.startMission.
         mode = Mode.MISSION
         setGotoState(GotoState.ENROUTE)
-        waypointMission.startMission(cmd)
-        onStatusLine("MISSION ENROUTE")
+        val gen = ++gotoGeneration
+        commandSystem.suspendVirtualStick { ok ->   // VS off, but 7000/7001 stay alive (override)
+            if (gen != gotoGeneration || mode != Mode.MISSION || !isArmed) return@suspendVirtualStick
+            if (!ok) {
+                Log.w(tag, "goto: could not disable Virtual Stick, mission not started")
+                onMissionFailed(WaypointMissionController.FaultReason.MISSION_ERROR)
+                return@suspendVirtualStick
+            }
+            main.postDelayed({
+                if (gen != gotoGeneration || mode != Mode.MISSION || !isArmed) return@postDelayed
+                waypointMission.startMission(cmd)
+                onStatusLine("MISSION ENROUTE")
+            }, VS_SETTLE_MS)
+        }
     }
 
     /** Mission completed successfully. */
@@ -147,6 +165,7 @@ class ControlCoordinator(
     fun onManualOverride(cmd: DroneCmd) = main.post {
         if (!commandSystem.isSuspended) return@post
         Log.i(tag, "manual override -> abort mission (if any) + resume")
+        gotoGeneration++
         if (waypointMission.isMissionActive) {
             waypointMission.abortMission()
         }
@@ -198,5 +217,8 @@ class ControlCoordinator(
         // Plausible altitude bounds (metres relative to takeoff) used as a sanity guard.
         const val MIN_ALT_M = -5f
         const val MAX_ALT_M = 500f
+
+        // Settle time between "VS disabled" confirmation and mission load/upload.
+        const val VS_SETTLE_MS = 500L
     }
 }

@@ -140,9 +140,6 @@ class CommandSystemController(
                 overrideNotified = false
                 resuming = false
 
-                // Keep the gimbal yaw following the aircraft heading (so the PC only sends pitch/roll).
-                gimbalController.applyFollowYawMode()
-
                 try {
                     fc.setVirtualStickAdvancedModeEnabled(true)
                 } catch (t: Throwable) {
@@ -220,9 +217,22 @@ class CommandSystemController(
      *
      * Does not change the command mapping/send logic: it only stops the send loop and watchdog
      * and disables Virtual Stick mode on the FlightController (mutually exclusive with a mission).
+     *
+     * [onSuspended] is invoked on the main thread ONLY once the FlightController has confirmed
+     * that Virtual Stick mode is off (true), or after all disable attempts failed (false).
+     * Starting a mission while Virtual Stick is still enabled is rejected by the aircraft, so the
+     * mission must be chained on this callback. If already suspended, it is invoked immediately.
      */
-    fun suspendVirtualStick() {
-        if (!isRunning || suspended) return
+    fun suspendVirtualStick(onSuspended: ((Boolean) -> Unit)? = null) {
+        if (!isRunning) {
+            onSuspended?.let { cb -> sendHandler.post { cb(true) } }
+            return
+        }
+        if (suspended) {
+            // Already suspended (replace case): make sure VS is really off, then continue.
+            disableVirtualStickWithRetry(1, onSuspended)
+            return
+        }
 
         suspended = true
         overrideNotified = false   // arm a fresh override window for this mission
@@ -234,20 +244,36 @@ class CommandSystemController(
         sendVirtualStickNow(lastFlightCmd!!)
         virtualStickEnabled = false
 
-        flightController()?.setVirtualStickModeEnabled(
-            false,
-            object : CommonCallbacks.CompletionCallback<DJIError> {
-                override fun onResult(error: DJIError?) {
-                    if (error != null) {
-                        Log.w(tag, "suspend: setVirtualStickModeEnabled(false) failed: ${error.description}")
+        onStatusLine("VS SUSPENDING (mission)")
+        disableVirtualStickWithRetry(1, onSuspended)
+    }
+
+    /** Disables VS mode, retrying a few times; reports the outcome on the main thread. */
+    private fun disableVirtualStickWithRetry(attempt: Int, onDone: ((Boolean) -> Unit)?) {
+        val fc = flightController() ?: run {
+            Log.w(tag, "suspend: FlightController null")
+            onDone?.let { cb -> sendHandler.post { cb(false) } }
+            return
+        }
+        fc.setVirtualStickModeEnabled(false, object : CommonCallbacks.CompletionCallback<DJIError> {
+            override fun onResult(error: DJIError?) {
+                sendHandler.post {
+                    if (!suspended && isRunning) return@post   // resumed meanwhile: abandon
+                    if (error == null) {
+                        Log.i(tag, "Virtual Stick SUSPENDED (mission), attempt $attempt")
+                        onStatusLine("VS SUSPENDED (mission)")
+                        onDone?.invoke(true)
+                    } else if (attempt < VS_DISABLE_MAX_ATTEMPTS) {
+                        Log.w(tag, "suspend: setVirtualStickModeEnabled(false) failed (attempt $attempt): ${error.description}")
+                        sendHandler.postDelayed({ disableVirtualStickWithRetry(attempt + 1, onDone) }, VS_DISABLE_RETRY_MS)
                     } else {
-                        Log.i(tag, "Virtual Stick SUSPENDED (mission)")
+                        Log.e(tag, "suspend: VS disable failed after $attempt attempts: ${error.description}")
+                        onStatusLine("VS suspend FAIL: ${error.description}")
+                        onDone?.invoke(false)
                     }
                 }
             }
-        )
-
-        onStatusLine("VS SUSPENDED (mission)")
+        })
     }
 
     /**
@@ -425,4 +451,9 @@ class CommandSystemController(
         yaw = 0f,
         throttle = 0f
     )
+
+    private companion object {
+        const val VS_DISABLE_MAX_ATTEMPTS = 3
+        const val VS_DISABLE_RETRY_MS = 400L
+    }
 }

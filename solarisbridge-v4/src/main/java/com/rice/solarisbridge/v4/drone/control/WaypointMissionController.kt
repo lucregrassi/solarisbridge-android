@@ -24,6 +24,7 @@ import dji.common.util.CommonCallbacks
 import dji.sdk.mission.MissionControl
 import dji.sdk.mission.waypoint.WaypointMissionOperator
 import dji.sdk.mission.waypoint.WaypointMissionOperatorListener
+import dji.sdk.products.Aircraft
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -82,6 +83,7 @@ class WaypointMissionController(
     @Volatile private var missionStarted = false
     @Volatile private var retryScheduled = false
     private var missionGeneration = 0   // invalidates pending retries when a new mission replaces this one
+    private var uploadingExtensions = 0
     private val uploadTimeoutRunnable = Runnable { onUploadTimeout() }
 
     // DJI V4 waypoint constraints.
@@ -92,7 +94,8 @@ class WaypointMissionController(
         const val MAX_SPEED = 15.0f
         const val MAX_UPLOAD_ATTEMPTS = 10      // V4 upload is flaky; a few attempts are usually needed
         const val UPLOAD_RETRY_DELAY_MS = 1500L // let the operator settle back to READY_TO_UPLOAD
-        const val UPLOAD_TIMEOUT_MS = 3000L     // if the upload stalls (no update/error), retry
+        const val UPLOAD_TIMEOUT_MS = 8000L     // if the upload stalls (no update/error), retry
+        const val MAX_UPLOADING_EXTENSIONS = 2  // extra timeouts granted while state == UPLOADING
     }
 
     private val operator: WaypointMissionOperator?
@@ -111,7 +114,7 @@ class WaypointMissionController(
                 if (missionStarted || !isMissionActive) return@post
                 if (err != null) {
                     Log.w(tag, "onUploadUpdate error: ${err.description}")
-                    scheduleUploadRetry()
+                    scheduleUploadRetry("upload: ${err.description}")
                     return@post
                 }
                 if (state == WaypointMissionState.READY_TO_EXECUTE) {
@@ -274,14 +277,39 @@ class WaypointMissionController(
             failMission("upload failed after ${uploadAttempt - 1} attempts")
             return
         }
-        Log.i(tag, "upload attempt $uploadAttempt (reload + upload)")
-        onStatusLine("MISSION upload attempt $uploadAttempt")
+        val state = op.currentState
+        Log.i(tag, "upload attempt $uploadAttempt (reload + upload), operator state=$state")
+        onStatusLine("MISSION upload attempt $uploadAttempt ($state)")
+
+        // 0) the operator must be in a state that accepts a new mission.
+        when (state) {
+            WaypointMissionState.EXECUTING, WaypointMissionState.EXECUTION_PAUSED -> {
+                // A previous mission is still running on the aircraft: stop it, then retry.
+                Log.w(tag, "operator busy ($state): stopping stale mission before upload")
+                op.stopMission(object : CommonCallbacks.CompletionCallback<DJIError> {
+                    override fun onResult(e: DJIError?) {
+                        if (e != null) Log.w(tag, "stale stopMission failed: ${e.description}")
+                    }
+                })
+                scheduleUploadRetry("operator $state")
+                return
+            }
+            WaypointMissionState.UPLOADING,
+            WaypointMissionState.DISCONNECTED,
+            WaypointMissionState.RECOVERING,
+            WaypointMissionState.NOT_SUPPORTED,
+            WaypointMissionState.UNKNOWN -> {
+                scheduleUploadRetry("operator $state")
+                return
+            }
+            else -> Unit   // READY_TO_UPLOAD / READY_TO_EXECUTE: (re)load below
+        }
 
         // A) re-load so the operator always has a valid loaded mission for this attempt.
         val loadError = op.loadMission(mission)
         if (loadError != null) {
             Log.w(tag, "loadMission (attempt $uploadAttempt) failed: ${loadError.description}")
-            scheduleUploadRetry()
+            scheduleUploadRetry("load: ${loadError.description}")
             return
         }
 
@@ -289,16 +317,19 @@ class WaypointMissionController(
         // we wait for the READY_TO_EXECUTE transition in onUploadUpdate.
         op.uploadMission(object : CommonCallbacks.CompletionCallback<DJIError> {
             override fun onResult(uploadError: DJIError?) {
-                if (uploadError != null) {
-                    Log.w(tag, "uploadMission (attempt $uploadAttempt) failed: ${uploadError.description}")
-                    scheduleUploadRetry()
-                } else {
-                    tryStartIfReady()
+                main.post {
+                    if (uploadError != null) {
+                        Log.w(tag, "uploadMission (attempt $uploadAttempt) failed: ${uploadError.description}")
+                        scheduleUploadRetry("upload: ${uploadError.description}")
+                    } else {
+                        tryStartIfReady()
+                    }
                 }
             }
         })
 
         // C) stall guard: if we never reach READY_TO_EXECUTE (no update, no error), retry.
+        uploadingExtensions = 0
         main.removeCallbacks(uploadTimeoutRunnable)
         main.postDelayed(uploadTimeoutRunnable, UPLOAD_TIMEOUT_MS)
     }
@@ -314,47 +345,71 @@ class WaypointMissionController(
 
         op.startMission(object : CommonCallbacks.CompletionCallback<DJIError> {
             override fun onResult(startError: DJIError?) {
+              main.post {
+                if (!isMissionActive) return@post
                 if (startError != null) {
-                    Log.w(tag, "startMission failed: ${startError.description}")
-                    failMission("startMission failed")
+                    // Do NOT give up: a start rejection (e.g. VS not yet released, operator not
+                    // settled) is usually transient. Make sure VS is off and redo load+upload+start.
+                    Log.w(tag, "startMission failed (attempt $uploadAttempt): ${startError.description}")
+                    missionStarted = false
+                    releaseVirtualStick()
+                    scheduleUploadRetry("start: ${startError.description}")
                 } else {
                     val c = pendingCmd
                     Log.i(tag, "mission STARTED -> ${c?.lat},${c?.lon} alt=${c?.alt} v=${c?.speed} hdg=${c?.heading}")
-                    onStatusLine("MISSION running")
+                    onStatusLine("MISSION running (attempt $uploadAttempt)")
                 }
+              }
             }
         })
     }
 
     private fun onUploadTimeout() {
         if (missionStarted || !isMissionActive) return
-        if (operator?.currentState == WaypointMissionState.READY_TO_EXECUTE) {
+        val state = operator?.currentState
+        if (state == WaypointMissionState.READY_TO_EXECUTE) {
             tryStartIfReady()
+        } else if (state == WaypointMissionState.UPLOADING && uploadingExtensions < MAX_UPLOADING_EXTENSIONS) {
+            // Still uploading over a slow link: do NOT reload (that would cancel the upload).
+            uploadingExtensions++
+            Log.i(tag, "upload still in progress -> extending timeout ($uploadingExtensions)")
+            main.postDelayed(uploadTimeoutRunnable, UPLOAD_TIMEOUT_MS)
         } else {
-            Log.w(tag, "upload stalled (timeout) -> retry")
-            scheduleUploadRetry()
+            Log.w(tag, "upload stalled (timeout, state=$state) -> retry")
+            scheduleUploadRetry("timeout ($state)")
         }
     }
 
     /** Schedules a single retry (reload + upload) after a delay; coalesced so triggers don't stack. */
-    private fun scheduleUploadRetry() {
+    private fun scheduleUploadRetry(reason: String) {
         if (retryScheduled || missionStarted || !isMissionActive) return
         main.removeCallbacks(uploadTimeoutRunnable)
         if (uploadAttempt >= MAX_UPLOAD_ATTEMPTS) {
-            failMission("upload failed after $uploadAttempt attempts")
+            failMission("failed after $uploadAttempt attempts, last error: $reason")
             return
         }
         retryScheduled = true
         val gen = missionGeneration
-        onStatusLine("MISSION upload retry ${uploadAttempt + 1}")
+        onStatusLine("MISSION retry ${uploadAttempt + 1}: $reason")
         main.postDelayed({
             retryScheduled = false
             if (gen == missionGeneration) attemptUpload()   // ignore retries from a replaced mission
         }, UPLOAD_RETRY_DELAY_MS)
     }
 
+    /** Best-effort: make sure Virtual Stick mode is off (a mission cannot start while it is on). */
+    private fun releaseVirtualStick() {
+        val fc = (BridgeBootstrapV4.getProductInstance() as? Aircraft)?.flightController ?: return
+        fc.setVirtualStickModeEnabled(false, object : CommonCallbacks.CompletionCallback<DJIError> {
+            override fun onResult(e: DJIError?) {
+                if (e != null) Log.w(tag, "releaseVirtualStick failed: ${e.description}")
+            }
+        })
+    }
+
     private fun failMission(reason: String) {
         Log.w(tag, "mission FAILED: $reason")
+        onStatusLine("MISSION FAILED: $reason")
         cleanupAfterMission()
         onMissionFailed(FaultReason.MISSION_ERROR)
     }
@@ -433,24 +488,36 @@ class WaypointMissionController(
 
         val heading = cmd.heading
         if (heading != null) {
-            // In USING_WAYPOINT_HEADING the heading interpolates between two waypoints
-            //  with different headings, so:
-            //  - wp1.heading = initial bearing toward the target (starts facing where it goes)
-            //  - wp2.heading = requested final heading
-            // The aircraft rotates gradually during the leg and arrives already correctly oriented.
-            wp1.heading = bearingDegrees(current.lat, current.lon, cmd.lat, cmd.lon)
-                .roundToInt().coerceIn(-180, 180)
-            wp2.heading = heading.roundToInt().coerceIn(-180, 180)
+            // "Rotate first, then translate": BOTH waypoints get the requested final heading.
+            // wp1 is the current position, so on reaching it the aircraft rotates in place to the
+            // final heading; since wp1 and wp2 have the same heading there is nothing to
+            // interpolate, and the leg to the target is a pure translation.
+            val finalHeading = normalizeHeading(heading.toDouble())
+            wp1.heading = finalHeading
+            wp2.heading = finalHeading
             builder.headingMode(WaypointMissionHeadingMode.USING_WAYPOINT_HEADING)
         } else {
             // No requested heading: nose follows the direction of flight.
             builder.headingMode(WaypointMissionHeadingMode.AUTO)
         }
 
-        return builder
+        val mission = builder
             .addWaypoint(wp1)
             .addWaypoint(wp2)
             .build()
+        mission.checkParameters()?.let { e ->
+            Log.w(tag, "mission checkParameters: ${e.description}")
+            onStatusLine("MISSION params: ${e.description}")
+        }
+        return mission
+    }
+
+    /** Wraps any angle into the integer range [-180, 180] accepted by Waypoint.heading. */
+    private fun normalizeHeading(deg: Double): Int {
+        var h = deg % 360.0
+        if (h > 180.0) h -= 360.0
+        if (h < -180.0) h += 360.0
+        return h.roundToInt().coerceIn(-180, 180)
     }
 
     /**

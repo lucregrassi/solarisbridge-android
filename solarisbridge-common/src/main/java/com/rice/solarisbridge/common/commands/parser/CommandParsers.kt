@@ -22,7 +22,7 @@ object CommandParsers {
         GimbalCmd(
             pitch = o.getDouble("pitch").toFloat(),
             roll = o.getDouble("roll").toFloat(),
-            // yaw is optional (V4 ignores it; the gimbal follows the aircraft in YAW_FOLLOW mode).
+            // yaw is optional (if omitted, V4 leaves the gimbal yaw untouched).
             yaw = if (o.has("yaw") && !o.isNull("yaw")) o.getDouble("yaw").toFloat() else null
         )
     } catch (_: Throwable) { null }
