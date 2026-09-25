@@ -45,6 +45,11 @@ class TelemetryController(
         val compassHeading: Double? = null,
         val satelliteCount: Int? = null,
         val isFlying: Boolean? = null,
+        // Mission diagnostics (V4): FC flight mode (GPS_ATTI = P, GPS_SPORT = S, JOYSTICK = Virtual
+        // Stick, GPS_WAYPOINT = mission...), GPS signal level and whether the home point is recorded.
+        val flightMode: String? = null,
+        val gpsSignalLevel: String? = null,
+        val homeLocationSet: Boolean? = null,
     )
 
     private var telemetryTimer: Timer? = null
@@ -65,6 +70,14 @@ class TelemetryController(
         gotoState = value
     }
 
+    // Reason of the last goto failure/rejection (null when none). Sent to the PC as "goto_error".
+    @Volatile
+    private var gotoError: String? = null
+
+    fun setGotoError(value: String?) {
+        gotoError = value
+    }
+
     /**
      * Current position used to build waypoint 1 of the mission.
      * Returns null if lat/lon/altitude are not available yet.
@@ -74,7 +87,12 @@ class TelemetryController(
         val lat = s.lat
         val lon = s.lon
         val alt = s.altRelTakeoff
-        return if (lat != null && lon != null && alt != null) {
+        // Without a GPS fix the V4 SDK can report NaN (or 0,0): such a position must never be used
+        // to build a waypoint (a NaN distance silently passed the old range check).
+        return if (lat != null && lon != null && alt != null &&
+            lat.isFinite() && lon.isFinite() && alt.isFinite() &&
+            !(lat == 0.0 && lon == 0.0)
+        ) {
             WaypointMissionController.CurrentPosition(lat, lon, alt.toFloat())
         } else {
             null
@@ -86,6 +104,25 @@ class TelemetryController(
 
     /** true if the aircraft is reported airborne in the latest snapshot. */
     fun isFlying(): Boolean = snapshot.get().isFlying == true
+
+    /** true if the latest snapshot holds a usable (finite, non-zero) position for a mission. */
+    fun hasValidPosition(): Boolean = currentPositionForMission() != null
+
+    /**
+     * One-line summary of everything that decides whether DJI accepts a waypoint mission.
+     * Logged on every goto / upload attempt / failure so a field test can be diagnosed from logcat.
+     */
+    fun missionDiagnostics(): String {
+        val s = snapshot.get()
+        val pos = currentPositionForMission()
+        val posStr = if (pos != null) {
+            String.format(java.util.Locale.US, "%.7f,%.7f alt=%.1f", pos.lat, pos.lon, pos.altRelTakeoff)
+        } else {
+            "INVALID(lat=${s.lat} lon=${s.lon} alt=${s.altRelTakeoff})"
+        }
+        return "mode=${s.flightMode} sats=${s.satelliteCount} gps=${s.gpsSignalLevel} " +
+                "home=${s.homeLocationSet} flying=${s.isFlying} pos=$posStr"
+    }
 
     private var monitoringRetryTimer: Timer? = null
 
@@ -330,7 +367,10 @@ class TelemetryController(
                 yaw = state.attitude?.yaw,
                 compassHeading = compassHeading,
                 satelliteCount = satellites,
-                isFlying = try { state.isFlying } catch (_: Throwable) { null }
+                isFlying = try { state.isFlying } catch (_: Throwable) { null },
+                flightMode = try { state.flightMode?.name } catch (_: Throwable) { null },
+                gpsSignalLevel = try { state.getGPSSignalLevel()?.name } catch (_: Throwable) { null },
+                homeLocationSet = try { state.isHomeLocationSet() } catch (_: Throwable) { null }
             )
         )
 
@@ -400,6 +440,8 @@ class TelemetryController(
             json.putNullable("satellite_count", s.satelliteCount)
             json.putNullable("is_flying", s.isFlying)
             json.put("goto_state", gotoState)
+            json.putNullable("goto_error", gotoError)
+            json.putNullable("flight_mode", s.flightMode)
 
             val payload = json.toString().toByteArray(Charsets.UTF_8)
             val pkt = DatagramPacket(payload, payload.size, target, telemetryTxPort)

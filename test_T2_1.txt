@@ -1,0 +1,54 @@
+--------- beginning of main
+09-25 15:37:04.415 I/MainActivityV4(13665): onCreate
+09-25 15:37:05.032 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:05.046 I/MainActivityV4(13665): onResume
+09-25 15:37:05.055 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:05.232 I/MainActivityV4(13665): onSurfaceTextureAvailable: 1036x618
+09-25 15:37:05.306 I/MainActivityV4(13665): attachPreview chiamata: w=1036 h=618 previewAttached=false
+09-25 15:37:05.306 I/MainActivityV4(13665): Preview ATTACCATA: size=1036x618
+09-25 15:37:05.410 I/MainActivityV4(13665): maybeAttachPreview: texture=1036x618, surfaceTexture=true, previewAttached=true
+09-25 15:37:05.519 I/MainActivityV4(13665): attachPreview chiamata: w=1036 h=618 previewAttached=true
+09-25 15:37:05.519 I/MainActivityV4(13665): attachPreview: preview gia attaccata, skip
+09-25 15:37:05.519 I/MainActivityV4(13665): maybeAttachPreview: texture=1036x618, surfaceTexture=true, previewAttached=true
+09-25 15:37:05.543 I/MainActivityV4(13665): attachPreview chiamata: w=1036 h=618 previewAttached=true
+09-25 15:37:05.543 I/MainActivityV4(13665): attachPreview: preview gia attaccata, skip
+09-25 15:37:08.061 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:11.066 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:14.071 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:17.074 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:20.079 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:23.081 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:26.086 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:29.090 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:32.096 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:35.100 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:38.105 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:41.109 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:44.113 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:47.118 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:50.123 W/MainActivityV4(13665): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:50.687 I/MainActivityV4(13665): onPause isChangingConfigurations=false
+09-25 15:37:50.786 I/WaypointMissionControllerV4(13665): Goto channel STOPPED
+09-25 15:37:50.786 I/MainActivityV4(13665): detachPreview chiamata: previewAttached=true
+09-25 15:37:50.786 I/MainActivityV4(13665): Preview STACCATA
+09-25 15:37:52.304 I/MainActivityV4(13665): onDestroy isChangingConfigurations=false
+09-25 15:37:52.305 I/WaypointMissionControllerV4(13665): Goto channel STOPPED
+09-25 15:37:52.305 I/MainActivityV4(13665): detachPreview chiamata: previewAttached=false
+09-25 15:37:52.305 I/MainActivityV4(13665): detachPreview: preview non attaccata, skip
+09-25 15:37:54.616 I/MainActivityV4(14212): onCreate
+09-25 15:37:55.431 W/MainActivityV4(14212): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:55.452 I/MainActivityV4(14212): onResume
+09-25 15:37:55.476 W/MainActivityV4(14212): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:37:55.649 I/MainActivityV4(14212): onSurfaceTextureAvailable: 1036x618
+09-25 15:37:55.714 I/MainActivityV4(14212): attachPreview chiamata: w=1036 h=618 previewAttached=false
+09-25 15:37:55.714 I/MainActivityV4(14212): Preview ATTACCATA: size=1036x618
+09-25 15:37:55.790 I/MainActivityV4(14212): maybeAttachPreview: texture=1036x618, surfaceTexture=true, previewAttached=true
+09-25 15:37:55.825 I/MainActivityV4(14212): attachPreview chiamata: w=1036 h=618 previewAttached=true
+09-25 15:37:55.825 I/MainActivityV4(14212): attachPreview: preview gia attaccata, skip
+09-25 15:37:55.826 I/MainActivityV4(14212): maybeAttachPreview: texture=1036x618, surfaceTexture=true, previewAttached=true
+09-25 15:37:55.851 I/MainActivityV4(14212): attachPreview chiamata: w=1036 h=618 previewAttached=true
+09-25 15:37:55.851 I/MainActivityV4(14212): attachPreview: preview gia attaccata, skip
+09-25 15:37:58.481 W/MainActivityV4(14212): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:38:01.486 W/MainActivityV4(14212): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:38:04.491 W/MainActivityV4(14212): refreshObstacleAvoidanceState: FlightAssistant null
+09-25 15:38:07.494 W/MainActivityV4(14212): refreshObstacleAvoidanceState: FlightAssistant null

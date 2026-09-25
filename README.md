@@ -134,6 +134,8 @@ The V4 app additionally reports:
 - `altitude_rel_takeoff` — aircraft altitude relative to the takeoff point (used as the waypoint altitude reference)
 - `is_flying` — whether the aircraft is currently airborne
 - `goto_state` — current state of the autonomous navigation: `idle` / `enroute` / `arrived` / `failed`
+- `goto_error` — reason of the last goto failure or rejection (`null` when none)
+- `flight_mode` — flight-controller mode (e.g. `GPS_ATTI` = P, `GPS_SPORT` = S, `JOYSTICK` = Virtual Stick, `GPS_WAYPOINT` = mission)
 
 Flight commands are received via UDP JSON on port `7000` and use values such as:
 
@@ -181,8 +183,14 @@ A 2-waypoint mission is built (current position → target) with `finishedAction
 so the aircraft **hovers** at the destination and waits for the PC to take over.
 
 Start sequence: the Virtual Stick is disabled first and the mission is loaded/uploaded only after
-the aircraft confirms it (+500 ms settle). Load, upload and start are retried together (up to 10
-attempts) on any error, stall or start rejection; the last DJI error is shown in the status line.
+the aircraft confirms it (+1000 ms settle). Load, upload and start are retried together (up to 10
+attempts) on any error, stall or start rejection; if DJI returns the **same error 3 times in a row**
+the app stops retrying and fails with that error. Invalid mission parameters fail immediately.
+The outcome (`STARTING` / `RETRYING` / `RUNNING` / `ARRIVED` / `FAILED: reason` / `REJECTED: reason`)
+stays visible in the "Mission" line of the app and the reason is sent to the PC as `goto_error`.
+
+A goto identical to the one in progress (same target, altitude and heading) is ignored, so the PC
+may re-send it without restarting the mission.
 
 ### Control state machine
 
@@ -198,8 +206,9 @@ in `MainActivity` arms/disarms the whole PC control surface (manual **and** miss
 
 Transitions:
 
-- **MANUAL → MISSION**: a goto is validated (GPS healthy, aircraft flying, distance within range)
-  and started. An invalid goto is rejected and the state is left unchanged.
+- **MANUAL → MISSION**: a goto is validated (valid position, GPS healthy, aircraft flying, distance
+  within range) and started. An invalid goto is rejected with `goto_state=failed` and the reason in
+  `goto_error` (if a mission is already running it is left untouched).
 - **MISSION → MANUAL (arrived)**: on mission completion the Virtual Stick is re-enabled **first**,
   then `goto_state=arrived` is published, so the PC can safely resume sending velocity.
 - **MISSION → MANUAL (override)**: a valid, non-zero flight command on `7000` during a mission

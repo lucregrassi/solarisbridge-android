@@ -38,6 +38,8 @@
     <string name="status_command_system_off">Command system: OFF</string>
     <string name="status_last_command_placeholder">Last command: —</string>
     <string name="status_last_command_format">Last command: %1$s</string>
+    <string name="status_mission_placeholder">Mission: —</string>
+    <string name="status_mission_format">Mission [%1$s]: %2$s</string>
 
     <!-- Obstacle avoidance -->
     <string name="button_check_obstacle_avoidance">Check obstacle avoidance</string>

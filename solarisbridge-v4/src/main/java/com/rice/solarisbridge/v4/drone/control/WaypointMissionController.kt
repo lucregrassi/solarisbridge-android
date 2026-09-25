@@ -50,8 +50,13 @@ class WaypointMissionController(
     private val currentPositionProvider: () -> CurrentPosition?,
     private val onGotoReceived: (WaypointGotoCmd) -> Unit,
     private val onMissionFinished: () -> Unit,
-    private val onMissionFailed: (FaultReason) -> Unit,
+    // FaultReason + human-readable detail (shown on the phone and sent to the PC as goto_error).
+    private val onMissionFailed: (FaultReason, String) -> Unit,
     private val onStatusLine: (String) -> Unit,
+    // One-line aircraft diagnostics (flight mode, sats, GPS level, home, position) for the logs.
+    private val diagnostics: () -> String = { "" },
+    // Sticky progress for the phone UI: "RETRYING n/10: reason", "RUNNING (attempt n)".
+    private val onMissionProgress: (String) -> Unit = {},
     private val tag: String = "WaypointMissionControllerV4"
 ) {
 
@@ -86,6 +91,15 @@ class WaypointMissionController(
     private var uploadingExtensions = 0
     private val uploadTimeoutRunnable = Runnable { onUploadTimeout() }
 
+    // true only between uploadMission(...) of the CURRENT attempt and its outcome: upload errors
+    // arriving outside this window belong to an old attempt and must not trigger a new retry.
+    private var uploadInFlight = false
+
+    // Same-error detection: if DJI keeps returning the identical error, retrying is pointless
+    // (e.g. RC not in P mode, weak GPS, invalid parameters) -> fail fast with that error.
+    private var lastErrorReason: String? = null
+    private var sameErrorCount = 0
+
     // DJI V4 waypoint constraints.
     private companion object {
         const val MIN_WP_DISTANCE_M = 1.0       // distances < ~0.5 m are rejected by the SDK
@@ -96,6 +110,7 @@ class WaypointMissionController(
         const val UPLOAD_RETRY_DELAY_MS = 1500L // let the operator settle back to READY_TO_UPLOAD
         const val UPLOAD_TIMEOUT_MS = 8000L     // if the upload stalls (no update/error), retry
         const val MAX_UPLOADING_EXTENSIONS = 2  // extra timeouts granted while state == UPLOADING
+        const val MAX_SAME_ERROR = 3            // identical consecutive errors -> stop retrying
     }
 
     private val operator: WaypointMissionOperator?
@@ -113,6 +128,10 @@ class WaypointMissionController(
             main.post {
                 if (missionStarted || !isMissionActive) return@post
                 if (err != null) {
+                    if (!uploadInFlight) {
+                        Log.i(tag, "onUploadUpdate error from an old attempt ignored: ${err.description}")
+                        return@post
+                    }
                     Log.w(tag, "onUploadUpdate error: ${err.description}")
                     scheduleUploadRetry("upload: ${err.description}")
                     return@post
@@ -135,10 +154,10 @@ class WaypointMissionController(
                 cleanupAfterMission()
                 onMissionFinished()
             } else {
-                Log.w(tag, "mission onExecutionFinish: ERROR ${error.description}")
+                Log.w(tag, "mission onExecutionFinish: ERROR ${error.description} | ${diagnostics()}")
                 val reason = classifyFault(error)
                 cleanupAfterMission()
-                onMissionFailed(reason)
+                onMissionFailed(reason, "interrupted during flight: ${error.description}")
             }
         }
     }
@@ -197,7 +216,7 @@ class WaypointMissionController(
     fun startMission(cmd: WaypointGotoCmd) {
         val op = operator ?: run {
             Log.w(tag, "startMission: WaypointMissionOperator null")
-            onMissionFailed(FaultReason.MISSION_ERROR)
+            onMissionFailed(FaultReason.MISSION_ERROR, "WaypointMissionOperator null")
             return
         }
 
@@ -224,31 +243,49 @@ class WaypointMissionController(
 
     private fun doStartMission(cmd: WaypointGotoCmd) {
         val current = currentPositionProvider() ?: run {
-            Log.w(tag, "startMission: current position unavailable")
-            onMissionFailed(FaultReason.GPS_LOST)
+            Log.w(tag, "startMission: current position unavailable/invalid | ${diagnostics()}")
+            onMissionFailed(FaultReason.GPS_LOST, "current position unavailable/invalid (no GPS fix?)")
             return
         }
 
         val op = operator ?: run {
             Log.w(tag, "startMission: WaypointMissionOperator null")
-            onMissionFailed(FaultReason.MISSION_ERROR)
+            onMissionFailed(FaultReason.MISSION_ERROR, "WaypointMissionOperator null")
             return
         }
 
         val distance = haversineMeters(current.lat, current.lon, cmd.lat, cmd.lon)
-        if (distance < MIN_WP_DISTANCE_M || distance > MAX_WP_DISTANCE_M) {
-            Log.w(tag, "startMission: distance out of range ($distance m)")
-            onStatusLine("GOTO rejected: distance ${"%.1f".format(distance)} m")
-            onMissionFailed(FaultReason.MISSION_ERROR)
+        Log.i(tag, "startMission: from ${current.lat},${current.lon} alt=${current.altRelTakeoff} " +
+                "to $cmd dist=${"%.1f".format(java.util.Locale.US, distance)} m | ${diagnostics()}")
+        // NB: !isFinite() is essential: with a NaN distance both comparisons below are false.
+        if (!distance.isFinite() || distance < MIN_WP_DISTANCE_M || distance > MAX_WP_DISTANCE_M) {
+            val msg = "distance ${"%.1f".format(java.util.Locale.US, distance)} m outside " +
+                    "[${MIN_WP_DISTANCE_M.toInt()}, ${MAX_WP_DISTANCE_M.toInt()}] m"
+            Log.w(tag, "startMission: $msg")
+            onStatusLine("GOTO rejected: $msg")
+            onMissionFailed(FaultReason.MISSION_ERROR, msg)
+            return
+        }
+
+        // Invalid parameters never become valid by retrying: fail fast with DJI's own message.
+        val mission = buildMission(cmd, current)
+        val paramError = mission.checkParameters()
+        if (paramError != null) {
+            Log.w(tag, "startMission: checkParameters -> ${paramError.description}")
+            onStatusLine("MISSION params: ${paramError.description}")
+            onMissionFailed(FaultReason.MISSION_ERROR, "invalid mission parameters: ${paramError.description}")
             return
         }
 
         // Reset the upload state machine and register the listener before the first attempt.
-        pendingMission = buildMission(cmd, current)
+        pendingMission = mission
         pendingCmd = cmd
         uploadAttempt = 0
         missionStarted = false
         retryScheduled = false
+        uploadInFlight = false
+        lastErrorReason = null
+        sameErrorCount = 0
         missionGeneration++
         main.removeCallbacks(uploadTimeoutRunnable)
 
@@ -278,7 +315,7 @@ class WaypointMissionController(
             return
         }
         val state = op.currentState
-        Log.i(tag, "upload attempt $uploadAttempt (reload + upload), operator state=$state")
+        Log.i(tag, "upload attempt $uploadAttempt (reload + upload), operator state=$state | ${diagnostics()}")
         onStatusLine("MISSION upload attempt $uploadAttempt ($state)")
 
         // 0) the operator must be in a state that accepts a new mission.
@@ -315,11 +352,20 @@ class WaypointMissionController(
 
         // B) upload. Success here may already be READY_TO_EXECUTE, so we check the state; otherwise
         // we wait for the READY_TO_EXECUTE transition in onUploadUpdate.
+        val gen = missionGeneration
+        val attempt = uploadAttempt
+        uploadInFlight = true
         op.uploadMission(object : CommonCallbacks.CompletionCallback<DJIError> {
             override fun onResult(uploadError: DJIError?) {
                 main.post {
+                    // A late callback of an older attempt (or of a replaced mission) must not
+                    // trigger retries/starts for the current one.
+                    if (gen != missionGeneration || attempt != uploadAttempt) {
+                        Log.i(tag, "stale uploadMission callback ignored (attempt $attempt): ${uploadError?.description ?: "OK"}")
+                        return@post
+                    }
                     if (uploadError != null) {
-                        Log.w(tag, "uploadMission (attempt $uploadAttempt) failed: ${uploadError.description}")
+                        Log.w(tag, "uploadMission (attempt $attempt) failed: ${uploadError.description}")
                         scheduleUploadRetry("upload: ${uploadError.description}")
                     } else {
                         tryStartIfReady()
@@ -341,16 +387,19 @@ class WaypointMissionController(
         if (op.currentState != WaypointMissionState.READY_TO_EXECUTE) return
 
         missionStarted = true
+        uploadInFlight = false
         main.removeCallbacks(uploadTimeoutRunnable)
+        val gen = missionGeneration
 
         op.startMission(object : CommonCallbacks.CompletionCallback<DJIError> {
             override fun onResult(startError: DJIError?) {
               main.post {
-                if (!isMissionActive) return@post
+                if (!isMissionActive || gen != missionGeneration) return@post
                 if (startError != null) {
-                    // Do NOT give up: a start rejection (e.g. VS not yet released, operator not
-                    // settled) is usually transient. Make sure VS is off and redo load+upload+start.
-                    Log.w(tag, "startMission failed (attempt $uploadAttempt): ${startError.description}")
+                    // A start rejection (e.g. VS not yet released, operator not settled) can be
+                    // transient: make sure VS is off and redo load+upload+start. If the very same
+                    // error keeps coming back, scheduleUploadRetry gives up (MAX_SAME_ERROR).
+                    Log.w(tag, "startMission failed (attempt $uploadAttempt): ${startError.description} | ${diagnostics()}")
                     missionStarted = false
                     releaseVirtualStick()
                     scheduleUploadRetry("start: ${startError.description}")
@@ -358,6 +407,7 @@ class WaypointMissionController(
                     val c = pendingCmd
                     Log.i(tag, "mission STARTED -> ${c?.lat},${c?.lon} alt=${c?.alt} v=${c?.speed} hdg=${c?.heading}")
                     onStatusLine("MISSION running (attempt $uploadAttempt)")
+                    onMissionProgress("RUNNING (started at upload attempt $uploadAttempt)")
                 }
               }
             }
@@ -384,6 +434,18 @@ class WaypointMissionController(
     private fun scheduleUploadRetry(reason: String) {
         if (retryScheduled || missionStarted || !isMissionActive) return
         main.removeCallbacks(uploadTimeoutRunnable)
+        uploadInFlight = false
+
+        if (reason == lastErrorReason) {
+            sameErrorCount++
+        } else {
+            lastErrorReason = reason
+            sameErrorCount = 1
+        }
+        if (sameErrorCount >= MAX_SAME_ERROR) {
+            failMission("same error ${sameErrorCount}x in a row: $reason")
+            return
+        }
         if (uploadAttempt >= MAX_UPLOAD_ATTEMPTS) {
             failMission("failed after $uploadAttempt attempts, last error: $reason")
             return
@@ -391,6 +453,7 @@ class WaypointMissionController(
         retryScheduled = true
         val gen = missionGeneration
         onStatusLine("MISSION retry ${uploadAttempt + 1}: $reason")
+        onMissionProgress("RETRYING ${uploadAttempt + 1}/$MAX_UPLOAD_ATTEMPTS, last error: $reason")
         main.postDelayed({
             retryScheduled = false
             if (gen == missionGeneration) attemptUpload()   // ignore retries from a replaced mission
@@ -408,10 +471,10 @@ class WaypointMissionController(
     }
 
     private fun failMission(reason: String) {
-        Log.w(tag, "mission FAILED: $reason")
+        Log.w(tag, "mission FAILED: $reason | ${diagnostics()}")
         onStatusLine("MISSION FAILED: $reason")
         cleanupAfterMission()
-        onMissionFailed(FaultReason.MISSION_ERROR)
+        onMissionFailed(FaultReason.MISSION_ERROR, reason)
     }
 
     /**
@@ -455,6 +518,7 @@ class WaypointMissionController(
         isMissionActive = false
         missionStarted = false
         retryScheduled = false
+        uploadInFlight = false
         pendingMission = null
         pendingCmd = null
         missionGeneration++   // invalidate any pending retry
@@ -501,15 +565,11 @@ class WaypointMissionController(
             builder.headingMode(WaypointMissionHeadingMode.AUTO)
         }
 
-        val mission = builder
+        // checkParameters() is evaluated by the caller (doStartMission), which fails fast on error.
+        return builder
             .addWaypoint(wp1)
             .addWaypoint(wp2)
             .build()
-        mission.checkParameters()?.let { e ->
-            Log.w(tag, "mission checkParameters: ${e.description}")
-            onStatusLine("MISSION params: ${e.description}")
-        }
-        return mission
     }
 
     /** Wraps any angle into the integer range [-180, 180] accepted by Waypoint.heading. */

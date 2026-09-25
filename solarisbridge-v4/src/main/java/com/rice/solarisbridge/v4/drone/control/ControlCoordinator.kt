@@ -30,6 +30,14 @@ class ControlCoordinator(
     // Safety preconditions to accept a goto (wired to telemetry in MainActivity).
     private val gpsHealthyProvider: () -> Boolean = { true },
     private val isFlyingProvider: () -> Boolean = { true },
+    // A usable (finite, non-zero) current position: never bypassable, the mission needs it.
+    private val positionValidProvider: () -> Boolean = { true },
+    // Sticky mission outcome for the phone UI (NOT overwritten by the 20 Hz command lines).
+    private val onMissionStatus: (String) -> Unit = {},
+    // Reason of the last goto failure/rejection, forwarded to the PC as "goto_error" (null = none).
+    private val onGotoError: (String?) -> Unit = {},
+    // One-line aircraft diagnostics, appended to rejection logs.
+    private val diagnostics: () -> String = { "" },
     private val tag: String = "ControlCoordinatorV4"
 ) {
 
@@ -46,6 +54,11 @@ class ControlCoordinator(
 
     // Incremented on every goto/override/disarm: invalidates a pending (not yet started) mission.
     private var gotoGeneration = 0
+
+    // Target of the mission in progress: an identical goto re-sent by the PC while this mission is
+    // being uploaded/flown is ignored instead of restarting (and possibly never starting) it.
+    private var activeGoto: WaypointGotoCmd? = null
+    private var duplicateGotoCount = 0
 
     // ---------------------------------------------------------------------
     // Command button: arms/disarms the whole PC control surface (manual + mission)
@@ -67,7 +80,9 @@ class ControlCoordinator(
         gotoGeneration++
         if (mode == Mode.MISSION) {
             waypointMission.abortMission()  // aircraft hovers (mission stop / failsafe)
+            onMissionStatus("ABORTED: PC control disarmed")
         }
+        activeGoto = null
         commandSystem.stop(moveGimbalToNeutral = false)
         waypointMission.stopListening()
         isArmed = false
@@ -91,10 +106,35 @@ class ControlCoordinator(
             Log.w(tag, "goto ignored: PC control not armed")
             return@post
         }
-        if (!isGotoValid(cmd)) {
-            onStatusLine("GOTO rejected (preconditions)")
-            return@post   // stay in the current state (self-loop)
+        val current = activeGoto
+        if (mode == Mode.MISSION && current != null && isSameTarget(current, cmd)) {
+            duplicateGotoCount++
+            if (duplicateGotoCount == 1 || duplicateGotoCount % 20 == 0) {
+                Log.i(tag, "duplicate goto ignored (x$duplicateGotoCount): mission to this target already in progress")
+            }
+            return@post
         }
+
+        val rejection = gotoRejectionReason(cmd)
+        if (rejection != null) {
+            Log.w(tag, "GOTO rejected: $rejection | ${diagnostics()}")
+            onStatusLine("GOTO rejected: $rejection")
+            onMissionStatus("REJECTED: $rejection")
+            if (mode != Mode.MISSION) {
+                // Tell the PC explicitly, otherwise it would wait for "arrived" forever.
+                onGotoError("rejected: $rejection")
+                setGotoState(GotoState.FAILED)
+            }
+            return@post   // a running mission (if any) is left untouched
+        }
+
+        if (mode == Mode.MISSION) {
+            Log.i(tag, "new goto replaces the current mission: $cmd")
+        }
+        activeGoto = cmd
+        duplicateGotoCount = 0
+        onGotoError(null)
+        onMissionStatus("STARTING -> ${cmd.lat},${cmd.lon} alt=${cmd.alt} hdg=${cmd.heading}")
 
         // The mission is started ONLY after the FlightController confirms Virtual Stick is off
         // (plus a short settle delay): starting a mission while VS is still enabled is rejected by
@@ -108,7 +148,10 @@ class ControlCoordinator(
             if (gen != gotoGeneration || mode != Mode.MISSION || !isArmed) return@suspendVirtualStick
             if (!ok) {
                 Log.w(tag, "goto: could not disable Virtual Stick, mission not started")
-                onMissionFailed(WaypointMissionController.FaultReason.MISSION_ERROR)
+                onMissionFailed(
+                    WaypointMissionController.FaultReason.MISSION_ERROR,
+                    "could not disable Virtual Stick"
+                )
                 return@suspendVirtualStick
             }
             main.postDelayed({
@@ -122,17 +165,34 @@ class ControlCoordinator(
     /** Mission completed successfully. */
     fun onMissionFinished() = main.post {
         if (mode != Mode.MISSION) return@post
+        activeGoto = null
         // Re-enable the Virtual Stick FIRST (receiver actuating), THEN report arrived to the PC.
-        commandSystem.resumeVirtualStick {
+        commandSystem.resumeVirtualStick { ok ->
             mode = Mode.MANUAL
-            setGotoState(GotoState.ARRIVED)
-            onStatusLine("MISSION ARRIVED -> manual")
+            if (ok) {
+                onGotoError(null)
+                setGotoState(GotoState.ARRIVED)
+                onStatusLine("MISSION ARRIVED -> manual")
+                onMissionStatus("ARRIVED")
+            } else {
+                // Arrived, but the PC cannot fly it: do not claim "arrived". The next PC velocity
+                // command retries the resume through onManualOverride (VS still suspended).
+                val msg = "arrived but Virtual Stick could not be re-enabled"
+                onGotoError(msg)
+                setGotoState(GotoState.FAILED)
+                onStatusLine("MISSION: $msg")
+                onMissionStatus("FAILED: $msg")
+            }
         }
     }
 
     /** Mission interrupted/failed. */
-    fun onMissionFailed(reason: WaypointMissionController.FaultReason) = main.post {
+    fun onMissionFailed(reason: WaypointMissionController.FaultReason, detail: String) = main.post {
         if (mode != Mode.MISSION) return@post
+        activeGoto = null
+        Log.w(tag, "mission failed: $reason - $detail")
+        onGotoError(detail)
+        onMissionStatus("FAILED: $detail")
         when (reason) {
             WaypointMissionController.FaultReason.RC_LOST -> {
                 // Radio-controller lost: the aircraft's own configured signal-loss failsafe takes
@@ -146,10 +206,13 @@ class ControlCoordinator(
             }
             else -> {
                 // GPS lost / mission error: hover + return to the Virtual Stick.
-                commandSystem.resumeVirtualStick {
+                commandSystem.resumeVirtualStick { ok ->
                     mode = Mode.MANUAL
                     setGotoState(GotoState.FAILED)
-                    onStatusLine("MISSION FAILED: $reason -> hover/manual")
+                    onStatusLine(
+                        if (ok) "MISSION FAILED: $detail -> hover/manual"
+                        else "MISSION FAILED: $detail (VS resume failed, hovering)"
+                    )
                 }
             }
         }
@@ -166,10 +229,18 @@ class ControlCoordinator(
         if (!commandSystem.isSuspended) return@post
         Log.i(tag, "manual override -> abort mission (if any) + resume")
         gotoGeneration++
+        if (mode == Mode.MISSION) {
+            onMissionStatus("OVERRIDE: PC velocity ${cmd} -> mission cancelled")
+        }
+        activeGoto = null
         if (waypointMission.isMissionActive) {
             waypointMission.abortMission()
         }
-        commandSystem.resumeVirtualStick {
+        commandSystem.resumeVirtualStick { ok ->
+            if (!ok) {
+                onStatusLine("OVERRIDE: VS resume failed, retry on next command")
+                return@resumeVirtualStick
+            }
             mode = Mode.MANUAL
             setGotoState(GotoState.IDLE)
             onStatusLine("OVERRIDE -> manual")
@@ -186,31 +257,44 @@ class ControlCoordinator(
     }
 
     /**
-     * Preconditions to accept a goto: healthy GPS, aircraft flying, and plausible value ranges.
+     * Preconditions to accept a goto: usable position, healthy GPS, aircraft flying, and
+     * plausible value ranges. Returns null if valid, otherwise a short human-readable reason.
      * The maximum target distance is enforced in WaypointMissionController via the haversine guard.
      */
-    private fun isGotoValid(cmd: WaypointGotoCmd): Boolean {
+    private fun gotoRejectionReason(cmd: WaypointGotoCmd): String? {
+        if (!cmd.lat.isFinite() || !cmd.lon.isFinite() ||
+            cmd.lat !in -90.0..90.0 || cmd.lon !in -180.0..180.0
+        ) {
+            return "target lat/lon invalid (${cmd.lat}, ${cmd.lon})"
+        }
+        if (!cmd.alt.isFinite() || cmd.alt < MIN_ALT_M || cmd.alt > MAX_ALT_M) {
+            return "altitude ${cmd.alt} outside [$MIN_ALT_M, $MAX_ALT_M]"
+        }
+        if (!cmd.speed.isFinite() || cmd.speed <= 0f) {
+            return "non-positive speed ${cmd.speed}"
+        }
+        if (!positionValidProvider()) {
+            return "aircraft position invalid (no GPS fix?)"
+        }
         if (!gpsHealthyProvider()) {
-            Log.w(tag, "goto invalid: GPS not healthy")
-            return false
+            return "GPS not healthy (too few satellites)"
         }
         if (!isFlyingProvider()) {
-            Log.w(tag, "goto invalid: aircraft not flying")
-            return false
+            return "aircraft not flying"
         }
-        if (cmd.lat !in -90.0..90.0 || cmd.lon !in -180.0..180.0) {
-            Log.w(tag, "goto invalid: lat/lon out of range")
-            return false
-        }
-        if (cmd.alt < MIN_ALT_M || cmd.alt > MAX_ALT_M) {
-            Log.w(tag, "goto invalid: altitude ${cmd.alt} out of [$MIN_ALT_M, $MAX_ALT_M]")
-            return false
-        }
-        if (cmd.speed <= 0f) {
-            Log.w(tag, "goto invalid: non-positive speed")
-            return false
-        }
-        return true
+        return null
+    }
+
+    /** Same target within ~10 cm / 20 cm / 1 deg: treated as a re-send of the same goto. */
+    private fun isSameTarget(a: WaypointGotoCmd, b: WaypointGotoCmd): Boolean {
+        // Local copies: smart casts are not allowed on properties declared in another module.
+        val ha = a.heading
+        val hb = b.heading
+        val sameHeading = if (ha == null || hb == null) ha == hb else kotlin.math.abs(ha - hb) < 1f
+        return kotlin.math.abs(a.lat - b.lat) < 1e-6 &&
+                kotlin.math.abs(a.lon - b.lon) < 1e-6 &&
+                kotlin.math.abs(a.alt - b.alt) < 0.2f &&
+                sameHeading
     }
 
     private companion object {
@@ -219,6 +303,6 @@ class ControlCoordinator(
         const val MAX_ALT_M = 500f
 
         // Settle time between "VS disabled" confirmation and mission load/upload.
-        const val VS_SETTLE_MS = 500L
+        const val VS_SETTLE_MS = 1000L   // with 500 ms the 1st upload was rejected in the 2026-09-25 test ("info not completely uploaded")
     }
 }

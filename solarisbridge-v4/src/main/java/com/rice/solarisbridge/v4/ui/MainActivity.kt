@@ -48,7 +48,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         private const val MIN_SATELLITES_FOR_MISSION = 10
 
         // DEBUG ONLY — bench testing without GPS/flight.
-        private const val DEV_BYPASS_GOTO_PRECONDITIONS = true   // <-- con true bypassa le precond
+        // MUST be false for real flights (true skips the satellite / is-flying checks; only for
+        // bench tests with propellers removed). A valid aircraft position is required anyway.
+        private const val DEV_BYPASS_GOTO_PRECONDITIONS = false
     }
 
     private lateinit var videoTexture: TextureView
@@ -62,6 +64,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var btnCmd: MaterialButton
     private lateinit var tvCmdStatus: TextView
     private lateinit var tvCmdLast: TextView
+    private lateinit var tvMissionStatus: TextView   // sticky mission outcome (not overwritten at 20 Hz)
 
     private lateinit var tvSatelliteCount: TextView
 
@@ -95,6 +98,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        forwardUsbAttachToDji(intent)   // app launched by plugging in the RC
 
         val toolbar = findViewById<MaterialToolbar>(R.id.topAppBar)
         setSupportActionBar(toolbar)
@@ -126,6 +130,30 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
     }
 
+    /**
+     * launchMode="singleTask": an RC (re)attach or a launcher intent is delivered here to the EXISTING
+     * instance instead of stacking a second MainActivity (two instances shared the single FC state
+     * callback: destroying one froze the other's telemetry).
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Log.i(TAG, "onNewIntent action=${intent.action} (existing instance reused)")
+        forwardUsbAttachToDji(intent)
+    }
+
+    /**
+     * DJI MSDK V4: the SDK learns that the remote controller was (re)attached over USB (AOA) from
+     * this broadcast, as in DJI's sample apps (DJIAoaControllerActivity). Needed when the activity
+     * is already running and the RC is plugged in / reconnected, otherwise the SDK may not detect it.
+     */
+    private fun forwardUsbAttachToDji(intent: Intent?) {
+        if (intent?.action == android.hardware.usb.UsbManager.ACTION_USB_ACCESSORY_ATTACHED) {
+            Log.i(TAG, "USB accessory attached -> forwarding to DJI SDK")
+            sendBroadcast(Intent(dji.sdk.sdkmanager.DJISDKManager.USB_ACCESSORY_ATTACHED))
+        }
+    }
+
     override fun onResume() {
         Log.i(TAG, "onResume")
         super.onResume()
@@ -150,11 +178,27 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         if (!isChangingConfigurations) {
             stopObstacleAvoidanceAutoRefresh()
+            val pausedDuringMission =
+                ::waypointMissionController.isInitialized && waypointMissionController.isMissionActive
+            if (pausedDuringMission) {
+                Log.w(TAG, "onPause while a mission is active -> mission aborted")
+            }
             if (::waypointMissionController.isInitialized) {
                 waypointMissionController.abortMission()
                 waypointMissionController.stopListening()
             }
             commandSystemController.stop(moveGimbalToNeutral = false)
+            // Everything above is stopped, so the coordinator must not stay "armed": otherwise after
+            // onResume the button shows armed while no receiver is listening (gotos silently lost).
+            if (::controlCoordinator.isInitialized) {
+                controlCoordinator.disarm()
+            }
+            if (pausedDuringMission) {
+                // Posted after disarm() (same main looper) so this message is the one that stays.
+                Handler(Looper.getMainLooper()).post {
+                    showMissionStatus("ABORTED: app paused (onPause) during mission")
+                }
+            }
             videoStreamController.stop()
             telemetryController.stop()
         }
@@ -219,6 +263,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         btnCmd = findViewById(R.id.btnCmd)
         tvCmdStatus = findViewById(R.id.tvCmdStatus)
         tvCmdLast = findViewById(R.id.tvCmdLast)
+        tvMissionStatus = findViewById(R.id.tvMissionStatus)
 
         btnObstacleAvoidance = findViewById(R.id.btnObstacleAvoidance)
         tvObstacleAvoidanceStatus = findViewById(R.id.tvObstacleAvoidanceStatus)
@@ -257,8 +302,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             currentPositionProvider = { telemetryController.currentPositionForMission() },
             onGotoReceived = { cmd -> controlCoordinator.onGotoReceived(cmd) },
             onMissionFinished = { controlCoordinator.onMissionFinished() },
-            onMissionFailed = { reason -> controlCoordinator.onMissionFailed(reason) },
-            onStatusLine = { line -> showCmdLine(line) }
+            onMissionFailed = { reason, detail -> controlCoordinator.onMissionFailed(reason, detail) },
+            onStatusLine = { line -> showCmdLine(line) },
+            diagnostics = { telemetryController.missionDiagnostics() },
+            onMissionProgress = { line -> showMissionStatus(line) }
         )
 
         controlCoordinator = ControlCoordinator(
@@ -273,7 +320,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             },
             isFlyingProvider = {
                 DEV_BYPASS_GOTO_PRECONDITIONS || telemetryController.isFlying()
-            }
+            },
+            positionValidProvider = { telemetryController.hasValidPosition() },
+            onMissionStatus = { line -> showMissionStatus(line) },
+            onGotoError = { err -> telemetryController.setGotoError(err) },
+            diagnostics = { telemetryController.missionDiagnostics() }
         )
     }
 
@@ -701,6 +752,26 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private fun showCmdLine(line: String) {
         runOnUiThread {
             tvCmdLast.text = getString(R.string.status_last_command_format, line)
+        }
+    }
+
+    /**
+     * Sticky mission outcome (STARTING / ARRIVED / FAILED: reason / REJECTED: reason / ...).
+     * Unlike tvCmdLast it is not overwritten by the 20 Hz flight/gimbal lines, so the failure
+     * reason stays readable (and can be photographed) on the phone after a field test.
+     */
+    private fun showMissionStatus(line: String) {
+        Log.i(TAG, "MISSION STATUS: $line")
+        runOnUiThread {
+            val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+            tvMissionStatus.text = getString(R.string.status_mission_format, time, line)
+            val color = when {
+                line.startsWith("ARRIVED") -> getColor(R.color.state_green)
+                line.startsWith("FAILED") || line.startsWith("REJECTED") ||
+                        line.startsWith("ABORTED") || line.startsWith("OVERRIDE") -> getColor(R.color.state_red)
+                else -> tvCmdLast.currentTextColor
+            }
+            tvMissionStatus.setTextColor(color)
         }
     }
 

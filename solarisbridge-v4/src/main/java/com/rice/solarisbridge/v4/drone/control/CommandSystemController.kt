@@ -282,15 +282,25 @@ class CommandSystemController(
      * (= hover); if the exit is a manual override it is the triggering command (already stored
      * by the receiver), so control resumes immediately.
      *
-     * NB: invoke onResumed only after the successful onResult, so the PC is notified only once
-     * the Virtual Stick is actually actuating again (avoids the arrived/resume race).
+     * NB: onResumed(true) is invoked only after the successful onResult, so the PC is notified
+     * only once the Virtual Stick is actually actuating again (avoids the arrived/resume race).
+     * onResumed(false) = the Virtual Stick could NOT be re-enabled (it stays suspended; the next
+     * PC velocity command retries via the override path). Callbacks run on the main thread.
+     * If the command system is not running / not suspended there is nothing to resume and
+     * onResumed(true) is reported immediately, so callers never get stuck waiting.
      */
-    fun resumeVirtualStick(onResumed: (() -> Unit)? = null) {
-        if (!isRunning || !suspended || resuming) return
+    fun resumeVirtualStick(onResumed: ((Boolean) -> Unit)? = null) {
+        if (!isRunning || !suspended) {
+            Log.i(tag, "resume: nothing to resume (running=$isRunning suspended=$suspended)")
+            onResumed?.let { cb -> sendHandler.post { cb(true) } }
+            return
+        }
+        if (resuming) return   // another resume is in flight; it will complete the transition
 
         val fc = flightController() ?: run {
             Log.w(tag, "resume: FlightController null")
             onStatusLine("VS resume: FC NULL")
+            onResumed?.let { cb -> sendHandler.post { cb(false) } }
             return
         }
 
@@ -311,6 +321,7 @@ class CommandSystemController(
                     resuming = false   // allow a later retry; stays suspended
                     Log.e(tag, "resume: setVirtualStickModeEnabled(true) failed: ${error.description}")
                     onStatusLine("VS resume FAIL: ${error.description}")
+                    onResumed?.let { cb -> sendHandler.post { cb(false) } }
                     return
                 }
 
@@ -332,7 +343,7 @@ class CommandSystemController(
                 resuming = false
                 Log.i(tag, "Virtual Stick RESUMED")
                 onStatusLine("VS RESUMED")
-                onResumed?.invoke()
+                onResumed?.let { cb -> sendHandler.post { cb(true) } }
             }
         })
     }

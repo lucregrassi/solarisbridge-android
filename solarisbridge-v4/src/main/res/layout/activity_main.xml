@@ -162,6 +162,16 @@
                 android:textSize="13sp"
                 android:textColor="?attr/colorOnSurface" />
 
+            <TextView
+                android:id="@+id/tvMissionStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="@string/status_mission_placeholder"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorOnSurface" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnObstacleAvoidance"
                 style="@style/Widget.Material3.Button"
